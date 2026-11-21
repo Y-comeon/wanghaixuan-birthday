@@ -1,4 +1,4 @@
-import { createCake, drawCake } from "./cake.js?v=11";
+import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
 
 (() => {
   "use strict";
@@ -224,7 +224,7 @@ import { createCake, drawCake } from "./cake.js?v=11";
     reduced = w * h < 420000 || motionPreference.matches;
     if (!cake || compactCake !== reduced) {
       compactCake = reduced;
-      cake = createCake(compactCake);
+      cake = createCake(compactCake, cake?.candles);
     }
     buildScene();
     resizeCanvas();
@@ -500,7 +500,16 @@ import { createCake, drawCake } from "./cake.js?v=11";
     drawText(t, elapsed); drawBlessing(now, 1 - sliceFocus);
     requestAnimationFrame(draw);
   }
-  function replayIntro() { intro = true; introStart = performance.now(); stage.classList.add("playing"); fireworks = []; meteors = []; activeBlessings = []; nextMeteorAt = 0; nextBlessingAt = 0; launchFirework(w * .22, h * .3); launchFirework(w * .78, h * .3); }
+  function replayIntro() {
+    recolorCandles(cake);
+    intro = true;
+    introStart = performance.now();
+    stage.classList.add("playing");
+    fireworks = []; meteors = []; activeBlessings = [];
+    nextMeteorAt = 0; nextBlessingAt = 0;
+    launchFirework(w * .22, h * .3);
+    launchFirework(w * .78, h * .3);
+  }
   replay.addEventListener("click", e => { e.stopPropagation(); replayIntro(); });
   stage.addEventListener("click", () => replayIntro());
   window.addEventListener("resize", resize, { passive: true });

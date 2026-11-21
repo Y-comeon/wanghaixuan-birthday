@@ -2,7 +2,14 @@ const TAU = Math.PI * 2;
 const BUILD_END = 5.55;
 const FOCAL = 3.05;
 const DEPTH_LEVELS = 5;
-const COLORS = ["64,153,255", "74,194,255", "129,220,255", "220,250,255", "255,207,134", "207,169,253", "255,157,193"];
+const CAKE_COLORS = ["64,153,255", "74,194,255", "129,220,255", "220,250,255", "255,207,134", "207,169,253", "255,157,193"];
+const CANDLE_COLORS = ["255,73,102", "255,145,63", "255,221,83", "104,243,126", "65,235,225", "106,143,255", "206,128,255"];
+const COLORS = [...CAKE_COLORS, ...CANDLE_COLORS];
+const CANDLE_BANDS = [
+  { total: 9, radius: .418, height: .074 },
+  { total: 7, radius: .305, height: .078 },
+  { total: 5, radius: .153, height: .085 }
+];
 const FIRST_CUT = 16;
 const CUT_INTERVAL = 20;
 const SLICE_RETURN = 8.15;
@@ -19,6 +26,7 @@ const HEARTS = [
   { x: .123, y: .231, size: .071, phase: 5.3 }
 ];
 const rand = (min, max) => min + Math.random() * (max - min);
+const randomCandleColor = () => CAKE_COLORS.length + Math.floor(Math.random() * CANDLE_COLORS.length);
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const ease = value => {
   const q = clamp01(value);
@@ -87,7 +95,7 @@ function createHeartSprite() {
   return sprite;
 }
 
-export function createCake(compact) {
+export function createCake(compact, previousCandles = []) {
   const particles = [];
   const count = amount => Math.round(amount * (compact ? .44 : .77));
   let cuttable = false;
@@ -154,34 +162,41 @@ export function createCake(compact) {
   }
   const cutFaces = createCutFaces(tiers[0], tiers[1].radius, compact);
 
-  const candleLayout = [
-    { x: -.11, z: .045, height: .111 },
-    { x: .015, z: -.068, height: .146 },
-    { x: .112, z: .066, height: .098 }
-  ];
-  const flames = [];
-  for (const [index, { x, z, height }] of candleLayout.entries()) {
-    const top = tiers[2].top + height;
-    for (let i = 0; i < count(235); i++) {
-      const a = rand(0, TAU);
-      const level = rand(0, 1);
-      const px = x + Math.cos(a) * .012;
-      const pz = z + Math.sin(a) * .012;
-      const stripe = Math.sin(level * 21 - a) > .05;
-      const arrival = 3.92 + index * .09 + level * .33;
-      add(Math.atan2(pz / .88, px), Math.hypot(px, pz / .88), top - height + level * height,
-        stripe ? 3 : 1, arrival, arrival + .65, rand(.58, 1.27));
+  const candles = [];
+  for (const [tierIndex, band] of CANDLE_BANDS.entries()) {
+    // Leave the removable wedge clear so the lower candles stay on the cake.
+    const gap = tierIndex === 0 ? CUT_HALF_WIDTH + .105 : 0;
+    const arc = TAU - 2 * gap;
+    const baseY = tiers[tierIndex].top;
+    for (let index = 0; index < band.total; index++) {
+      const angle = CUT_ANGLE + gap + (index + .5) * arc / band.total + tierIndex * .26;
+      const x = Math.cos(angle) * band.radius;
+      const z = Math.sin(angle) * band.radius * .88;
+      const height = band.height * (index % 2 ? 1.10 : .91);
+      const color = previousCandles[candles.length]?.color ?? randomCandleColor();
+      const wax = [];
+      for (let i = 0; i < count(103); i++) {
+        const turn = rand(0, TAU);
+        const level = rand(0, 1);
+        const px = x + Math.cos(turn) * .011;
+        const pz = z + Math.sin(turn) * .011;
+        const stripe = Math.sin(level * 15 - turn) > .79;
+        const arrival = 3.88 + tierIndex * .24 + index * .027 + level * .28;
+        if (!stripe) wax.push(particles.length);
+        add(Math.atan2(pz / .88, px), Math.hypot(px, pz / .88), baseY + level * height,
+          stripe ? 3 : color, arrival, arrival + .58, rand(.67, 1.30));
+      }
+      candles.push({
+        x, y: baseY + height, z, color, wax, start: 4.70 + tierIndex * .17 + index * .026,
+        sparks: Array.from({ length: compact ? 7 : 12 }, () => ({
+          height: rand(.005, .054), side: rand(-1, 1), phase: rand(0, TAU), size: rand(.53, 1.12)
+        }))
+      });
     }
-    flames.push({
-      x, y: top, z, start: 4.73 + index * .14,
-      sparks: Array.from({ length: count(69) }, () => ({
-        height: rand(.015, .105), side: rand(-1, 1), phase: rand(0, TAU), size: rand(.5, 1.4)
-      }))
-    });
   }
 
   return {
-    particles, flames, cutFaces, heart: createHeartSprite(),
+    particles, candles, cutFaces, heart: createHeartSprite(),
     groups: Array.from({ length: COLORS.length * DEPTH_LEVELS }, () => []),
     glows: [glowSprite("75,194,255"), glowSprite("255,198,101")],
     dust: Array.from({ length: count(930) }, () => ({
@@ -193,6 +208,13 @@ export function createCake(compact) {
       size: rand(.65, 1.96), phase: rand(0, TAU)
     }))
   };
+}
+
+export function recolorCandles({ candles, particles }) {
+  for (const candle of candles) {
+    candle.color = randomCandleColor();
+    for (const index of candle.wax) particles[index].color = candle.color;
+  }
 }
 
 function createCutFaces({ radius, top, bottom }, coveredRadius, compact) {
@@ -404,8 +426,9 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
       }
     }
     const twinkle = .9 + .10 * Math.sin(drift * 2.1 + p.drift);
-    const light = (.14 + facing * .82 + depth * .16) * twinkle * ease((elapsed - p.start) * 4.2);
-    const size = p.size * pointSize * scale * (.9 + Math.max(-.13, depth * .31));
+    const coloredWax = p.color >= CAKE_COLORS.length;
+    const light = ((coloredWax ? .32 : .14) + facing * .82 + depth * .16) * twinkle * ease((elapsed - p.start) * 4.2);
+    const size = p.size * pointSize * scale * ((coloredWax ? 1.04 : .9) + Math.max(-.13, depth * .31));
     plot(p.color, light, size);
   }
   if (focus > .015) {
@@ -515,18 +538,20 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     }
   }
 
-  for (const flame of cake.flames) {
-    const opacity = ease((elapsed - flame.start) / .52);
+  const flameSize = Math.max(.54, Math.min(1, cakeSize / 340));
+  for (const candle of cake.candles) {
+    const opacity = ease((elapsed - candle.start) / .52);
     if (!opacity) continue;
-    const flicker = Math.sin(drift * 7 + flame.x * 26);
-    project(flame.x + flicker * .006, flame.y + .052, flame.z);
-    glow(cake.glows[1], 15 * scale * pointSize, opacity * (.59 + flicker * .12));
-    for (const spark of flame.sparks) {
-      const taper = Math.sin(spark.height / .113 * Math.PI) * .021;
-      project(flame.x + spark.side * taper + flicker * spark.height * .16,
-        flame.y + spark.height * (1 + flicker * .08), flame.z + Math.cos(spark.phase) * taper * .52);
-      const size = spark.size * pointSize * scale;
-      ctx.fillStyle = spark.height < .058 ? "#fff2bb" : "#ffbd70";
+    const flicker = Math.sin(drift * 7 + candle.x * 26 + candle.z * 13);
+    project(candle.x + flicker * .003, candle.y + .023, candle.z);
+    glow(cake.glows[1], 10 * scale * flameSize, opacity * (.65 + flicker * .12));
+    for (let i = 0; i < candle.sparks.length; i += stride) {
+      const spark = candle.sparks[i];
+      const taper = Math.sin(spark.height / .058 * Math.PI) * .011;
+      project(candle.x + spark.side * taper + flicker * spark.height * .14,
+        candle.y + spark.height * (1 + flicker * .08), candle.z + Math.cos(spark.phase) * taper * .52);
+      const size = spark.size * flameSize * scale;
+      ctx.fillStyle = spark.height < .030 ? "#fff2bb" : "#ffbd70";
       ctx.globalAlpha = opacity * (.53 + Math.sin(spark.phase + drift * 12) * .24);
       ctx.fillRect(x, y, size, size);
     }
