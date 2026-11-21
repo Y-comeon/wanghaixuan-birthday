@@ -1,13 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Great+Vibes&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600;700&family=Zhi+Mang+Xing&display=swap');
-
+@font-face { font-family: "Birthday Name"; src: url("name-zcool-kuaile.woff2") format("woff2"); font-weight: 400; }
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #030722; }
-body { font-family: "Noto Serif SC", "Microsoft YaHei", serif; }
-.stage { position: relative; width: 100%; height: 100%; min-height: 100svh; overflow: hidden; isolation: isolate; background: radial-gradient(circle at 50% 42%, #102b72 0%, #07133e 42%, #030722 100%); }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+.stage { position: relative; width: 100%; height: 100%; min-height: 100svh; overflow: hidden; isolation: isolate; background: radial-gradient(circle at 50% 49%, #0a1a39, #020410 72%); }
 #birthdayCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at center, transparent 42%, rgba(1, 4, 20, .38) 100%); }
-.replay { position: absolute; z-index: 3; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); border: 1px solid rgba(180, 231, 255, .44); border-radius: 999px; padding: 9px 15px; color: #e9fbff; background: rgba(20, 62, 134, .42); box-shadow: 0 0 18px rgba(73, 190, 255, .22); font: 600 12px/1 "Noto Serif SC", serif; backdrop-filter: blur(8px); cursor: pointer; transition: transform .2s, background .2s; }
+.replay { position: absolute; z-index: 3; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); border: 1px solid rgba(180, 231, 255, .44); border-radius: 999px; padding: 9px 15px; color: #e9fbff; background: rgba(20, 62, 134, .50); box-shadow: 0 0 18px rgba(73, 190, 255, .22); font: 600 12px/1 "Microsoft YaHei", "PingFang SC", sans-serif; cursor: pointer; transition: transform .2s, background .2s; }
 .replay:active { transform: scale(.94); background: rgba(51, 120, 220, .65); }
 .hint { position: absolute; z-index: 2; left: 50%; bottom: max(19px, env(safe-area-inset-bottom)); transform: translateX(-50%); margin: 0; color: rgba(220, 247, 255, .78); font-size: 12px; letter-spacing: .18em; text-shadow: 0 0 12px rgba(69, 202, 255, .78); pointer-events: auto; cursor: pointer; transition: opacity .6s, transform .2s; }
 .hint:active { transform: translateX(-50%) scale(.95); }
