@@ -1,4 +1,4 @@
-import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
+import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake.js?v=13";
 
 (() => {
   "use strict";
@@ -20,6 +20,7 @@ import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
   let lowDetail = false, samples = 0, slowSamples = 0;
   let cake, layout, nameGlyphs, compactCake, background, englishRun;
   let pixelRatio, nameImage, englishImage;
+  let digitColors;
   let stars = [], dust = [], fireworks = [], meteors = [], numberStrokes = [], ringDots = [];
   const blessings = ["岁岁欢愉", "平安喜乐", "喜乐长安", "常乐常安", "温柔常伴", "清欢自在", "笑靥如花", "明媚如初", "可爱如初", "熠熠生辉", "光芒万丈", "万事胜意", "岁月静好", "芳华自在", "眉眼如初", "星河长明", "得偿所愿", "人间值得", "一生被爱", "岁岁平安", "喜乐无忧", "顺遂无虞"];
   let activeBlessings = [], lastBlessing = "", nextBlessingAt = 0, nextMeteorAt = 0;
@@ -235,8 +236,8 @@ import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
     dust = Array.from({ length: reduced ? 30 : 80 }, () => ({ x: Math.random() * w, y: Math.random() * h, r: rand(.5, 1.8), vx: rand(-.08, .08), vy: rand(.06, .2), a: rand(.12, .55), c: palette[Math.floor(rand(0, palette.length))] }));
     const flourish = (points) => resamplePath(points, reduced ? 6 : 3.8);
     numberStrokes = [
-      { points: flourish(joinPoints(sampleCubic({ x: -35, y: -13, z: 0 }, { x: -18, y: -39, z: 0 }, { x: 23, y: -42, z: 0 }, { x: 29, y: -18, z: 0 }, 42), sampleCubic({ x: 29, y: -18, z: 0 }, { x: 35, y: 2, z: 0 }, { x: 4, y: 17, z: 0 }, { x: -30, y: 43, z: 0 }, 42), sampleCubic({ x: -30, y: 43, z: 0 }, { x: -2, y: 40, z: 0 }, { x: 23, y: 43, z: 0 }, { x: 37, y: 38, z: 0 }, 26))), color: "#9deeff", delay: 0, offsetX: -36 },
-      { points: flourish(joinPoints(sampleCubic({ x: 5, y: -14, z: 1 }, { x: 13, y: -21, z: 1 }, { x: 20, y: -31, z: 1 }, { x: 24, y: -35, z: 1 }, 22), sampleCubic({ x: 24, y: -35, z: 1 }, { x: 21, y: -10, z: 1 }, { x: 21, y: 18, z: 1 }, { x: 21, y: 45, z: 1 }, 44), sampleCubic({ x: 21, y: 45, z: 1 }, { x: 20, y: 50, z: 1 }, { x: 32, y: 48, z: 1 }, { x: 39, y: 45, z: 1 }, 18))), color: "#d6c4ff", delay: .43, offsetX: 38 }
+      { points: flourish(joinPoints(sampleCubic({ x: -35, y: -13, z: 0 }, { x: -18, y: -39, z: 0 }, { x: 23, y: -42, z: 0 }, { x: 29, y: -18, z: 0 }, 42), sampleCubic({ x: 29, y: -18, z: 0 }, { x: 35, y: 2, z: 0 }, { x: 4, y: 17, z: 0 }, { x: -30, y: 43, z: 0 }, 42), sampleCubic({ x: -30, y: 43, z: 0 }, { x: -2, y: 40, z: 0 }, { x: 23, y: 43, z: 0 }, { x: 37, y: 38, z: 0 }, 26))), delay: 0, offsetX: -36 },
+      { points: flourish(joinPoints(sampleCubic({ x: 5, y: -14, z: 1 }, { x: 13, y: -21, z: 1 }, { x: 20, y: -31, z: 1 }, { x: 24, y: -35, z: 1 }, 22), sampleCubic({ x: 24, y: -35, z: 1 }, { x: 21, y: -10, z: 1 }, { x: 21, y: 18, z: 1 }, { x: 21, y: 45, z: 1 }, 44), sampleCubic({ x: 21, y: 45, z: 1 }, { x: 20, y: 50, z: 1 }, { x: 32, y: 48, z: 1 }, { x: 39, y: 45, z: 1 }, 18))), delay: .43, offsetX: 38 }
     ];
     englishRun = createLatinRun("Happy Birthday for", layout.englishSize, layout.englishY, 7.7, 1.85);
     nextBlessingAt = 0; nextMeteorAt = 0; activeBlessings = []; lastBlessing = ""; meteors = [];
@@ -454,10 +455,10 @@ import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
     const { centerX: cx, numberY, numberSize } = layout;
     const float = Math.sin(t * .85) * (motionPreference.matches ? .8 : 2.5);
     const numberProgress = clamp((elapsed - 5.55) / 2.05, 0, 1), numberScale = numberSize / 100;
-    numberStrokes.forEach(stroke => {
+    numberStrokes.forEach((stroke, index) => {
       const q = ease(clamp((numberProgress - stroke.delay) / (1 - stroke.delay), 0, 1));
       const numberMap = p => ({ x: cx + (p.x + stroke.offsetX) * numberScale, y: numberY + p.y * numberScale + float, depth: 0 });
-      drawParticlePath(stroke.points, q, numberMap, stroke.color, reduced ? 2.05 : 2.4, t, stroke.delay * 7);
+      drawParticlePath(stroke.points, q, numberMap, digitColors[index], reduced ? 2.05 : 2.4, t, stroke.delay * 7);
     });
     const numberReveal = ease(numberProgress);
     for (const p of ringDots) {
@@ -502,6 +503,7 @@ import { createCake, drawCake, recolorCandles } from "./cake.js?v=12";
   }
   function replayIntro() {
     recolorCandles(cake);
+    digitColors = [randomRainbowColor(), randomRainbowColor()];
     intro = true;
     introStart = performance.now();
     stage.classList.add("playing");

@@ -3,8 +3,8 @@ const BUILD_END = 5.55;
 const FOCAL = 3.05;
 const DEPTH_LEVELS = 5;
 const CAKE_COLORS = ["64,153,255", "74,194,255", "129,220,255", "220,250,255", "255,207,134", "207,169,253", "255,157,193"];
-const CANDLE_COLORS = ["255,73,102", "255,145,63", "255,221,83", "104,243,126", "65,235,225", "106,143,255", "206,128,255"];
-const COLORS = [...CAKE_COLORS, ...CANDLE_COLORS];
+const RAINBOW_COLORS = ["255,73,102", "255,145,63", "255,221,83", "104,243,126", "65,235,225", "106,143,255", "206,128,255"];
+const COLORS = [...CAKE_COLORS, ...RAINBOW_COLORS];
 const CANDLE_BANDS = [
   { total: 9, radius: .418, height: .074 },
   { total: 7, radius: .305, height: .078 },
@@ -26,7 +26,8 @@ const HEARTS = [
   { x: .123, y: .231, size: .071, phase: 5.3 }
 ];
 const rand = (min, max) => min + Math.random() * (max - min);
-const randomCandleColor = () => CAKE_COLORS.length + Math.floor(Math.random() * CANDLE_COLORS.length);
+const randomRainbowIndex = () => Math.floor(Math.random() * RAINBOW_COLORS.length);
+const randomCandleColor = () => CAKE_COLORS.length + randomRainbowIndex();
 const clamp01 = value => Math.max(0, Math.min(1, value));
 const ease = value => {
   const q = clamp01(value);
@@ -45,6 +46,10 @@ function glowSprite(color) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, 32, 32);
   return sprite;
+}
+
+export function randomRainbowColor() {
+  return `rgb(${RAINBOW_COLORS[randomRainbowIndex()]})`;
 }
 
 function createHeartSprite() {
