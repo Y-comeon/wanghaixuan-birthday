@@ -25,6 +25,14 @@ const HEARTS = [
   { x: -.153, y: .204, size: .057, phase: 4 },
   { x: .123, y: .231, size: .071, phase: 5.3 }
 ];
+const BUILD_PULSES = [
+  { time: 1.18, y: .008, radius: .53, hue: 0 },
+  { time: 2.24, y: .188, radius: .47, hue: 1 },
+  { time: 3.37, y: .375, radius: .36, hue: 2 },
+  { time: 4.48, y: .548, radius: .25, hue: 0 }
+];
+const STREAM_COLORS = ["69,205,255", "136,116,255", "242,132,255"];
+const TRAIL_STRENGTH = [1, .58, .24];
 const rand = (min, max) => min + Math.random() * (max - min);
 const randomRainbowIndex = () => Math.floor(Math.random() * RAINBOW_COLORS.length);
 const randomCandleColor = () => CAKE_COLORS.length + randomRainbowIndex();
@@ -46,6 +54,19 @@ function glowSprite(color) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, 32, 32);
   return sprite;
+}
+
+function createBuildLighting() {
+  const haze = document.createElement("canvas");
+  haze.width = haze.height = 96;
+  const ctx = haze.getContext("2d");
+  const gradient = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
+  gradient.addColorStop(0, "rgba(95,157,255,.29)");
+  gradient.addColorStop(.35, "rgba(78,97,236,.16)");
+  gradient.addColorStop(1, "rgba(65,66,210,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 96, 96);
+  return { haze, sparks: STREAM_COLORS.map(glowSprite) };
 }
 
 export function randomRainbowColor() {
@@ -204,13 +225,15 @@ export function createCake(compact, previousCandles = []) {
     particles, candles, cutFaces, heart: createHeartSprite(),
     groups: Array.from({ length: COLORS.length * DEPTH_LEVELS }, () => []),
     glows: [glowSprite("75,194,255"), glowSprite("255,198,101")],
+    buildLighting: createBuildLighting(),
     dust: Array.from({ length: count(930) }, () => ({
       angle: rand(0, TAU), radius: rand(.55, 1.01), y: rand(-.08, .18), size: rand(.32, 1.18),
       speed: rand(.11, .35), phase: rand(0, TAU)
     })),
     ribbon: Array.from({ length: count(1100) }, (_, i) => ({
-      progress: i / count(1100), spread: rand(-.036, .036), lift: rand(-.045, .045),
-      size: rand(.65, 1.96), phase: rand(0, TAU)
+      progress: Math.floor(i / 3) / Math.ceil(count(1100) / 3), stream: i % 3,
+      spread: rand(-.06, .06), lift: rand(-.055, .055),
+      size: rand(.55, 1.75), phase: rand(0, TAU)
     }))
   };
 }
@@ -280,10 +303,97 @@ function cameraAt(elapsed, calm) {
   const transition = ease(idle / 4.5);
   // A slower arc during the close-up keeps the opening in the lower tier visible.
   return {
-    yaw: (1.04 - .91 * opening) * (1 - transition) + idleYaw * transition,
-    pitch: (calm ? .50 : .72) - (calm ? .18 : .42) * opening
+    yaw: ((calm ? 1.04 : 1.34) - (calm ? .91 : 1.21) * opening) * (1 - transition) + idleYaw * transition,
+    pitch: (calm ? .50 : .84) - (calm ? .18 : .54) * opening
       + (calm ? .05 : .17) * Math.sin(steadyTime * (calm ? .37 : .84))
   };
+}
+
+function drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, project, glow) {
+  const visibility = ease(elapsed / .38) * (1 - ease((elapsed - 4.83) / .72));
+  if (visibility <= 0) return;
+  const rise = ease((elapsed - .35) / 4.5);
+  const turn = .9 + elapsed * (calm ? 1.15 : 2.1) + elapsed ** 2 * (calm ? .025 : .145);
+  const wrap = calm ? 5.6 : 8.6;
+  const coreRadius = .52 - rise * .28;
+  const projectTrail = (stream, q, spread = 0, lift = 0) => {
+    const angle = turn + stream * TAU / 3 - q * wrap;
+    const r = coreRadius + q * (.50 - rise * .16) + spread;
+    const y = rise * .62 - q * (.12 + rise * .38) + Math.sin(q * 8 + stream) * .030 + lift;
+    return project(Math.cos(angle) * r, y, Math.sin(angle) * r * .88);
+  };
+  const trailPoints = [];
+  const samples = stride === 2 ? 34 : 54;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const [stream, color] of STREAM_COLORS.entries()) {
+    const pigment = `rgb(${color})`;
+    for (let i = 0; i <= samples; i++) {
+      const point = projectTrail(stream, i / samples);
+      trailPoints.push(point.x, point.y);
+    }
+    for (let section = 0; section < 3; section++) {
+      const start = Math.floor(section * samples / 3);
+      const end = Math.floor((section + 1) * samples / 3);
+      const strength = TRAIL_STRENGTH[section] * visibility;
+      ctx.beginPath();
+      ctx.moveTo(trailPoints[start * 2], trailPoints[start * 2 + 1]);
+      for (let i = start + 1; i <= end; i++) ctx.lineTo(trailPoints[i * 2], trailPoints[i * 2 + 1]);
+      ctx.strokeStyle = pigment;
+      ctx.lineWidth = pointSize * (5.4 - section);
+      ctx.globalAlpha = strength * .17;
+      ctx.stroke();
+      ctx.lineWidth = pointSize * (1.55 - section * .31);
+      ctx.globalAlpha = strength * .66;
+      ctx.stroke();
+      if (section === 0) {
+        ctx.strokeStyle = "#def9ff";
+        ctx.globalAlpha = strength * .68;
+        ctx.lineWidth = pointSize * .54;
+        ctx.stroke();
+      }
+    }
+    trailPoints.length = 0;
+    ctx.fillStyle = pigment;
+    for (let i = stream; i < cake.ribbon.length; i += 3 * stride) {
+      const particle = cake.ribbon[i];
+      const q = particle.progress;
+      const point = projectTrail(stream, q, particle.spread, particle.lift);
+      const pulse = .62 + .38 * Math.sin(particle.phase + elapsed * 5.6) ** 2;
+      ctx.globalAlpha = visibility * (1 - q * .86) * pulse;
+      const size = particle.size * point.scale * pointSize;
+      ctx.fillRect(point.x, point.y, size, size);
+    }
+    const head = projectTrail(stream, 0);
+    glow(cake.buildLighting.sparks[stream], pointSize * 23, visibility * .95);
+    ctx.fillStyle = "#effcff";
+    ctx.globalAlpha = visibility * .93;
+    ctx.fillRect(head.x - pointSize, head.y - pointSize, pointSize * 2, pointSize * 2);
+  }
+}
+
+function drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, project, glow) {
+  for (const pulse of BUILD_PULSES) {
+    const age = elapsed - pulse.time;
+    if (age <= 0 || age >= 1.05) continue;
+    const expansion = ease(age / 1.05);
+    const alpha = ease(age / .15) * (1 - ease((age - .31) / .74)) * (calm ? .50 : 1);
+    const radius = pulse.radius + (calm ? .055 : .26) * expansion;
+    const color = `rgb(${STREAM_COLORS[pulse.hue]})`;
+    const points = stride === 2 ? 44 : 74;
+    for (let i = 0; i < points; i++) {
+      const angle = i * TAU / points + pulse.time;
+      const ripple = .012 * Math.sin(i * 2.1);
+      const radial = radius + ripple;
+      const p = project(Math.cos(angle) * radial, pulse.y - expansion * .038 + ripple, Math.sin(angle) * radial * .88);
+      const near = clamp01(.59 + p.depth * .66);
+      const size = pointSize * (i % 6 === 0 ? 2.1 : 1.16) * (1 - expansion * .36);
+      ctx.globalAlpha = alpha * near;
+      ctx.fillStyle = i % 6 === 0 ? "#e3f5ff" : color;
+      ctx.fillRect(p.x, p.y, size, size);
+      if (i % 11 === 0) glow(cake.buildLighting.sparks[pulse.hue], pointSize * 11, alpha * near * .52);
+    }
+  }
 }
 
 function sliceAt(elapsed) {
@@ -336,7 +446,8 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
   const slideLeft = Math.max(0, displayCakeSize * .82 - viewportWidth * .135);
   const displayCakeX = Math.min(normalX, Math.max(displayCakeSize * .69 + 9, normalX - slideLeft));
   const centerX = normalX + (displayCakeX - normalX) * focus;
-  const cakeSize = normalSize + (displayCakeSize - normalSize) * focus;
+  const approach = calm ? 1 : .87 + .13 * ease(elapsed / 4.5);
+  const cakeSize = normalSize * approach + (displayCakeSize - normalSize) * focus;
   const { yaw, pitch } = cameraAt(elapsed, calm);
   const sinYaw = Math.sin(yaw), cosYaw = Math.cos(yaw);
   const sinPitch = Math.sin(pitch), cosPitch = Math.cos(pitch);
@@ -349,6 +460,15 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     scale = FOCAL / (FOCAL - depth);
     x = centerX + (px * cosYaw - pz * sinYaw) * cakeSize * scale;
     y = cakeY + (toward * sinPitch - py * cosPitch) * cakeSize * scale;
+  };
+  const projected = { x: 0, y: 0, depth: 0, scale: 1 };
+  const projectBuild = (px, py, pz) => {
+    project(px, py, pz);
+    projected.x = x;
+    projected.y = y;
+    projected.depth = depth;
+    projected.scale = scale;
+    return projected;
   };
   const detailX = normalX + Math.min(viewportWidth * .25, normalSize * .77);
   const detailY = cakeY - normalSize * .24;
@@ -386,6 +506,12 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
+  const forming = elapsed < BUILD_END;
+  if (forming) {
+    const ambient = ease(elapsed / .7) * (1 - ease((elapsed - 4.55) / 1));
+    ctx.globalAlpha = ambient * (calm ? .47 : .82);
+    ctx.drawImage(cake.buildLighting.haze, centerX - cakeSize * .84, cakeY - cakeSize * .94, cakeSize * 1.68, cakeSize * 1.32);
+  }
 
   const dustReveal = ease((elapsed - .22) / 1.8);
   const drift = elapsed * (calm ? .32 : 1);
@@ -413,11 +539,11 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     const scatter = 1 - progress;
     let px = p.x, py = p.y, pz = p.z;
     if (scatter > 0) {
-      const angle = p.angle - scatter * (calm ? 2.25 : 6.1);
-      const radius = p.radius + scatter * p.scatter;
+      const angle = p.angle - scatter ** 1.28 * (calm ? 2.25 : 4.85 + p.drift * .56);
+      const radius = p.radius + scatter * p.scatter * (calm ? .66 : 1.22);
       px = Math.cos(angle) * radius;
       pz = Math.sin(angle) * radius * .88;
-      py += scatter * (.14 + Math.sin(p.drift) * .23);
+      py += scatter * (.19 + Math.sin(p.drift + p.angle) * .26) * (calm ? .63 : 1);
     }
     project(px, py, pz);
     // Angle-based lighting separates the near wall from the back of each tier.
@@ -432,8 +558,9 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     }
     const twinkle = .9 + .10 * Math.sin(drift * 2.1 + p.drift);
     const coloredWax = p.color >= CAKE_COLORS.length;
-    const light = ((coloredWax ? .32 : .14) + facing * .82 + depth * .16) * twinkle * ease((elapsed - p.start) * 4.2);
-    const size = p.size * pointSize * scale * ((coloredWax ? 1.04 : .9) + Math.max(-.13, depth * .31));
+    const arrival = forming ? Math.sin(Math.PI * scatter) * (calm ? .14 : .32) : 0;
+    const light = ((coloredWax ? .32 : .14) + facing * .82 + depth * .16 + arrival) * twinkle * ease((elapsed - p.start) * 4.2);
+    const size = p.size * pointSize * scale * ((coloredWax ? 1.04 : .9) + Math.max(-.13, depth * .31) + arrival * .58);
     plot(p.color, light, size);
   }
   if (focus > .015) {
@@ -489,36 +616,9 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     }
   }
 
-  const ribbonReveal = ease(elapsed / .42);
-  const ribbonTail = 1 - ease((elapsed - 4.72) / 1.46);
-  if (ribbonTail > 0) {
-    const rise = ease((elapsed - .15) / 4.75);
-    const rotation = elapsed * (calm ? 1.3 : 2.75);
-    ctx.fillStyle = "#79d9ff";
-    for (const p of cake.ribbon) {
-      const q = p.progress;
-      const angle = rotation - q * TAU * (calm ? 1.15 : 2.15);
-      const radius = .36 + q * .47 - rise * .16 + p.spread;
-      const height = rise * .61 - q * (.14 + rise * .38) + p.lift;
-      project(Math.cos(angle) * radius, height, Math.sin(angle) * radius * .88);
-      const size = p.size * scale * pointSize;
-      ctx.globalAlpha = ribbonReveal * ribbonTail * (1 - q * .88) ** 1.3 * (.43 + .57 * Math.sin(p.phase) ** 2);
-      ctx.fillRect(x, y, size, size);
-    }
-    // Keep a brighter spine visible through the loose spray.
-    ctx.fillStyle = "#b6ecff";
-    for (let i = 179; i >= 0; i--) {
-      const q = i / 225;
-      const angle = rotation - q * TAU * (calm ? 1.15 : 2.15);
-      const radius = .36 + q * .47 - rise * .16;
-      const height = rise * .61 - q * (.14 + rise * .38) + Math.sin(i * 2.7) * .013;
-      project(Math.cos(angle) * radius, height, Math.sin(angle) * radius * .88);
-      const size = pointSize * scale * (1.9 - q);
-      ctx.globalAlpha = ribbonReveal * ribbonTail * (1 - q) * .72;
-      ctx.fillRect(x, y, size, size);
-    }
-    project(Math.cos(rotation) * (.36 - rise * .16), rise * .61, Math.sin(rotation) * (.36 - rise * .16) * .88);
-    glow(cake.glows[0], 20 * pointSize * scale, ribbonReveal * ribbonTail * .75);
+  if (forming) {
+    drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, projectBuild, glow);
+    drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, projectBuild, glow);
   }
 
   const orbitGlow = ease((elapsed - 4.9) / 1.55);

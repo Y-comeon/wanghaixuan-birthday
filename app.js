@@ -1,4 +1,4 @@
-import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake.js?v=13";
+import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake.js?v=14";
 
 (() => {
   "use strict";
