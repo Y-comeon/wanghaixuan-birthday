@@ -526,7 +526,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
       audioStatus.textContent = "";
       updateAudioButton();
     }).catch(() => {
-      audioStatus.textContent = "轻触播放音乐";
+      audioStatus.textContent = "自动播放受限，请点播放音乐";
       updateAudioButton();
     });
   }
@@ -630,10 +630,8 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     updateAudioButton();
   });
   updateVolume();
-  audio.addEventListener("canplay", startMusic, { once: true });
   startMusic();
   stage.addEventListener("click", event => {
-    startMusic();
     if (!event.target.closest(".audio-controls") && event.target !== replay) addFloatingHeart(event);
   });
   window.addEventListener("resize", resize, { passive: true });
