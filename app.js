@@ -6,6 +6,11 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   const ctx = canvas.getContext("2d", { alpha: false });
   const stage = document.querySelector(".stage");
   const replay = document.getElementById("replay");
+  const audio = document.getElementById("birthdayAudio");
+  const audioToggle = document.getElementById("audioToggle");
+  const volume = document.getElementById("volume");
+  const volumeValue = document.getElementById("volumeValue");
+  const audioStatus = document.getElementById("audioStatus");
   const TAU = Math.PI * 2;
   const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
   const birthdayName = "王海璇";
@@ -24,6 +29,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   const floatingHearts = [];
   const heartSprites = new Map();
   let stars = [], dust = [], fireworks = [], meteors = [], numberStrokes = [], ringDots = [];
+  let audioUnavailable = false;
   const blessings = ["岁岁欢愉", "平安喜乐", "喜乐长安", "常乐常安", "温柔常伴", "清欢自在", "笑靥如花", "明媚如初", "可爱如初", "熠熠生辉", "光芒万丈", "万事胜意", "岁月静好", "芳华自在", "眉眼如初", "星河长明", "得偿所愿", "人间值得", "一生被爱", "岁岁平安", "喜乐无忧", "顺遂无虞"];
   let activeBlessings = [], lastBlessing = "", nextBlessingAt = 0, nextMeteorAt = 0;
   const palette = ["#dff8ff", "#86e7ff", "#4ac7ff", "#7e8dff", "#b89bff", "#ffffff"];
@@ -507,6 +513,32 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     });
   }
 
+  function updateAudioButton() {
+    const playing = !audio.paused && !audio.ended;
+    audioToggle.textContent = playing ? "Ⅱ 暂停音乐" : "♫ 播放音乐";
+    audioToggle.setAttribute("aria-label", playing ? "暂停音乐" : "播放音乐");
+  }
+
+  function startMusic() {
+    if (audioUnavailable || !audio) return;
+    audio.volume = Number(volume.value);
+    audio.play().then(() => {
+      audioStatus.textContent = "";
+      updateAudioButton();
+    }).catch(() => {
+      audioStatus.textContent = "轻触播放音乐";
+      updateAudioButton();
+    });
+  }
+
+  function toggleMusic(event) {
+    event.stopPropagation();
+    if (audioUnavailable) return;
+    if (audio.paused) startMusic();
+    else audio.pause();
+    updateAudioButton();
+  }
+
   function drawFloatingHearts(now) {
     const motion = motionPreference.matches ? .35 : 1;
     for (let i = floatingHearts.length - 1; i >= 0; i--) {
@@ -579,7 +611,31 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     launchFirework(w * .78, h * .3);
   }
   replay.addEventListener("click", e => { e.stopPropagation(); replayIntro(); });
-  stage.addEventListener("click", addFloatingHeart);
+  audioToggle.addEventListener("click", toggleMusic);
+  function updateVolume() {
+    const level = Number(volume.value);
+    audio.volume = level;
+    volumeValue.value = `${Math.round(level * 100)}%`;
+    volumeValue.textContent = volumeValue.value;
+  }
+  volume.addEventListener("input", event => { event.stopPropagation(); updateVolume(); });
+  volume.addEventListener("click", event => event.stopPropagation());
+  document.querySelector(".audio-controls").addEventListener("click", event => event.stopPropagation());
+  audio.addEventListener("play", updateAudioButton);
+  audio.addEventListener("pause", updateAudioButton);
+  audio.addEventListener("error", () => {
+    audioUnavailable = true;
+    audioStatus.textContent = "音频格式不受浏览器支持";
+    audioToggle.disabled = true;
+    updateAudioButton();
+  });
+  updateVolume();
+  audio.addEventListener("canplay", startMusic, { once: true });
+  startMusic();
+  stage.addEventListener("click", event => {
+    startMusic();
+    if (!event.target.closest(".audio-controls") && event.target !== replay) addFloatingHeart(event);
+  });
   window.addEventListener("resize", resize, { passive: true });
   motionPreference.addEventListener?.("change", resize);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { last = performance.now(); } });

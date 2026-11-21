@@ -7,15 +7,25 @@
   <meta name="description" content="Happy Birthday for 王海璇">
   <title>Happy Birthday for 王海璇</title>
   <link rel="preload" href="name-zcool-kuaile.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <main class="stage" aria-label="生日祝福动画">
     <canvas id="birthdayCanvas"></canvas>
     <div class="vignette"></div>
+    <audio id="birthdayAudio" src="gentleman.mp3" preload="auto" loop></audio>
+    <section class="audio-controls" aria-label="音乐控制">
+      <button id="audioToggle" type="button" aria-label="播放音乐">♫ 播放音乐</button>
+      <label class="volume-control">
+        <span aria-hidden="true">🔊</span>
+        <input id="volume" type="range" min="0" max="1" step=".01" value=".7" aria-label="音乐音量">
+        <output id="volumeValue" for="volume">70%</output>
+      </label>
+      <span id="audioStatus" class="audio-status" role="status" aria-live="polite"></span>
+    </section>
     <button id="replay" class="replay" type="button" aria-label="重新播放生日祝福">↻ 重新播放</button>
     <p class="hint">轻触屏幕，祝福+1</p>
   </main>
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=18"></script>
 </body>
 </html>
