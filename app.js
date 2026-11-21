@@ -21,6 +21,8 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   let cake, layout, nameGlyphs, compactCake, background, englishRun;
   let pixelRatio, nameImage, englishImage;
   let digitColors;
+  const floatingHearts = [];
+  const heartSprites = new Map();
   let stars = [], dust = [], fireworks = [], meteors = [], numberStrokes = [], ringDots = [];
   const blessings = ["岁岁欢愉", "平安喜乐", "喜乐长安", "常乐常安", "温柔常伴", "清欢自在", "笑靥如花", "明媚如初", "可爱如初", "熠熠生辉", "光芒万丈", "万事胜意", "岁月静好", "芳华自在", "眉眼如初", "星河长明", "得偿所愿", "人间值得", "一生被爱", "岁岁平安", "喜乐无忧", "顺遂无虞"];
   let activeBlessings = [], lastBlessing = "", nextBlessingAt = 0, nextMeteorAt = 0;
@@ -481,6 +483,68 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     }
     drawName(t, elapsed, float);
   }
+
+  function addFloatingHeart(event) {
+    const bounds = stage.getBoundingClientRect();
+    const color = randomRainbowColor();
+    if (!heartSprites.has(color)) {
+      const sprite = document.createElement("canvas");
+      sprite.width = cake.heart.width;
+      sprite.height = cake.heart.height;
+      const target = sprite.getContext("2d");
+      target.drawImage(cake.heart, 0, 0);
+      target.globalCompositeOperation = "source-in";
+      target.fillStyle = color;
+      target.fillRect(0, 0, sprite.width, sprite.height);
+      heartSprites.set(color, sprite);
+    }
+    if (floatingHearts.length >= 20) floatingHearts.shift();
+    floatingHearts.push({
+      x: event.clientX - bounds.left, y: event.clientY - bounds.top,
+      color, sprite: heartSprites.get(color), size: rand(16, 33),
+      start: performance.now(), duration: rand(2200, 3100),
+      sway: rand(7, 17), rise: rand(65, 112), phase: rand(0, TAU)
+    });
+  }
+
+  function drawFloatingHearts(now) {
+    const motion = motionPreference.matches ? .35 : 1;
+    for (let i = floatingHearts.length - 1; i >= 0; i--) {
+      const heart = floatingHearts[i];
+      const age = Math.max(0, now - heart.start);
+      const progress = age / heart.duration;
+      if (progress >= 1) {
+        floatingHearts.splice(i, 1);
+        continue;
+      }
+      const angle = heart.phase + progress * TAU * 1.25;
+      const size = heart.size * (.70 + .30 * ease(age / 180));
+      const opacity = .94 * (.62 + .38 * ease(age / 150)) * (1 - ease((progress - .19) / .81));
+      const x = clamp(heart.x + (Math.sin(angle) - Math.sin(heart.phase)) * heart.sway * motion, size / 2, w - size / 2);
+      const startY = clamp(heart.y, size / 2 + 6, h - size / 2);
+      const y = startY - Math.min(heart.rise * motion, startY - size / 2) * progress;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(angle) * .23 * motion);
+      ctx.globalAlpha = opacity;
+      ctx.drawImage(heart.sprite, -size / 2, -size / 2, size, size);
+      ctx.restore();
+
+      const scatter = ease((progress - .32) / .68);
+      if (!scatter) continue;
+      ctx.save();
+      ctx.globalAlpha = opacity * scatter;
+      ctx.fillStyle = heart.color;
+      for (let point = 0; point < 6; point++) {
+        const bearing = heart.phase + point * TAU / 6;
+        const distance = size * (.26 + scatter * .72 * motion);
+        const dotSize = 1.45 - scatter * .7;
+        ctx.fillRect(x + Math.cos(bearing) * distance, y + Math.sin(bearing) * distance, dotSize, dotSize);
+      }
+      ctx.restore();
+    }
+  }
+
   function draw(now) {
     const interval = now - last;
     const t = now / 1000, dt = Math.min(.06, interval / 1000 || .016);
@@ -499,6 +563,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     drawBackground(elapsed); drawFireworks(dt); drawMeteors(dt, now);
     const sliceFocus = drawCake(ctx, cake, elapsed, layout, motionPreference.matches, lowDetail);
     drawText(t, elapsed); drawBlessing(now, 1 - sliceFocus);
+    drawFloatingHearts(now);
     requestAnimationFrame(draw);
   }
   function replayIntro() {
@@ -507,13 +572,14 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     intro = true;
     introStart = performance.now();
     stage.classList.add("playing");
+    floatingHearts.length = 0;
     fireworks = []; meteors = []; activeBlessings = [];
     nextMeteorAt = 0; nextBlessingAt = 0;
     launchFirework(w * .22, h * .3);
     launchFirework(w * .78, h * .3);
   }
   replay.addEventListener("click", e => { e.stopPropagation(); replayIntro(); });
-  stage.addEventListener("click", () => replayIntro());
+  stage.addEventListener("click", addFloatingHeart);
   window.addEventListener("resize", resize, { passive: true });
   motionPreference.addEventListener?.("change", resize);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { last = performance.now(); } });
