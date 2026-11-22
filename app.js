@@ -600,7 +600,8 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   }
   function replayIntro() {
     recolorCandles(cake);
-    digitColors = [randomRainbowColor(), randomRainbowColor()];
+    const digitColor = randomRainbowColor();
+    digitColors = [digitColor, digitColor];
     intro = true;
     introStart = performance.now();
     stage.classList.add("playing");
