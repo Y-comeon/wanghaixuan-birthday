@@ -28,6 +28,14 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   let digitColors;
   const floatingHearts = [];
   const heartSprites = new Map();
+  const nameBursts = [];
+  const juiceParticles = [];
+  let juiceCycle = -1;
+  let juiceBursts = [false, false];
+  let clickCount = 0;
+  let secretCelebration = null;
+  let nameCelebration = null;
+  let celebrationCycle = -1;
   let stars = [], dust = [], fireworks = [], meteors = [], numberStrokes = [], ringDots = [];
   let audioUnavailable = false;
   const blessings = ["岁岁欢愉", "平安喜乐", "喜乐长安", "常乐常安", "温柔常伴", "清欢自在", "笑靥如花", "明媚如初", "可爱如初", "熠熠生辉", "光芒万丈", "万事胜意", "岁月静好", "芳华自在", "眉眼如初", "星河长明", "得偿所愿", "人间值得", "一生被爱", "岁岁平安", "喜乐无忧", "顺遂无虞"];
@@ -180,6 +188,117 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
       return;
     }
     paintName(ctx, t, elapsed, centerX, nameY + float);
+  }
+
+  function addNameBurst() {
+    const now = performance.now();
+    if (nameCelebration) { nameCelebration.end += 1000; return; }
+    const particles = [], count = reduced ? 55 : 100;
+    for (let i = 0; i < count; i++) {
+      const angle = i / count * TAU + rand(-.12, .12), heartT = angle;
+      const hx = 16 * Math.sin(heartT) ** 3, hy = -(13 * Math.cos(heartT) - 5 * Math.cos(2 * heartT) - 2 * Math.cos(3 * heartT) - Math.cos(4 * heartT));
+      particles.push({ sx: layout.centerX + rand(-layout.nameSize * 1.7, layout.nameSize * 1.7), sy: layout.nameY + rand(-layout.nameSize * .45, layout.nameSize * .45), tx: layout.centerX + hx * layout.nameSize * .058, ty: layout.nameY + hy * layout.nameSize * .058, color: randomRainbowColor(), size: rand(1.4, 3.4), phase: rand(0, TAU) });
+    }
+    nameCelebration = { start: now, end: now + 3000, particles };
+  }
+
+  function drawNameBursts(now) {
+    for (let i = nameBursts.length - 1; i >= 0; i--) {
+      const p = nameBursts[i], q = (now - p.start) / p.life;
+      if (q >= 1) { nameBursts.splice(i, 1); continue; }
+      const x = p.x + p.vx * q, y = p.y + p.vy * q + 18 * q * q;
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = (1 - q) * .9; ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 10;
+      ctx.fillRect(x - p.size / 2, y - p.size / 2, p.size, p.size); ctx.restore();
+    }
+    if (!nameCelebration) return;
+    if (now > nameCelebration.end) { nameCelebration = null; return; }
+    const elapsed = now - nameCelebration.start, q = elapsed / (nameCelebration.end - nameCelebration.start), form = ease(clamp((q - .08) / .28, 0, 1)), fade = 1 - ease((q - .82) / .18);
+    for (const p of nameCelebration.particles) {
+      const scatter = 1 - form, x = p.sx * scatter + p.tx * form + Math.cos(p.phase + elapsed * .004) * scatter * 18, y = p.sy * scatter + p.ty * form + Math.sin(p.phase + elapsed * .004) * scatter * 15;
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = fade * (.66 + .34 * Math.sin(elapsed * .008 + p.phase)); ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 12; ctx.fillRect(x - p.size / 2, y - p.size / 2, p.size, p.size); ctx.restore();
+    }
+  }
+
+  function burstJuice(now, burstIndex) {
+    const colors = ["#ffffff", "#8ddcff", "#ffb15c"], count = reduced ? 18 : 34;
+    const sliceX = layout.centerX + Math.min(w * .25, layout.cakeSize * .77);
+    const sliceY = layout.cakeY - layout.cakeSize * .24;
+    const sliceRadius = Math.min(layout.cakeSize * 1.72, w * .73) * .22;
+    for (let i = 0; i < count; i++) {
+      const angle = rand(0, TAU), radius = layout.cakeSize * rand(.34, .53);
+      const x = sliceX + Math.cos(angle) * sliceRadius, y = sliceY + Math.sin(angle) * sliceRadius * .58;
+      const speed = rand(55, 170) * (burstIndex ? 1.08 : 1);
+      juiceParticles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - rand(2, 30), start: now, life: rand(620, 1080), color: colors[Math.floor(Math.random() * colors.length)], size: rand(1.2, 3.4) });
+    }
+  }
+
+  function drawJuiceSpray(now, elapsed, focus) {
+    const relative = elapsed - 16, cycle = relative >= 0 ? Math.floor(relative / 20) : -1, phase = relative >= 0 ? relative % 20 : -1;
+    if (cycle !== juiceCycle) { juiceCycle = cycle; juiceBursts = [false, false]; }
+    const burstTimes = [3.53, 5.4];
+    if (cycle >= 0 && focus > .08) {
+      burstTimes.forEach((time, index) => {
+        if (!juiceBursts[index] && phase >= time && phase < time + .32) { juiceBursts[index] = true; burstJuice(now, index); }
+      });
+    }
+    for (let i = juiceParticles.length - 1; i >= 0; i--) {
+      const p = juiceParticles[i], q = (now - p.start) / p.life;
+      if (q >= 1) { juiceParticles.splice(i, 1); continue; }
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = (1 - q) * .85; ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 8;
+      const x = p.x + p.vx * q, y = p.y + p.vy * q + 48 * q * q;
+      ctx.fillRect(x - p.size / 2, y - p.size / 2, p.size, p.size);
+      ctx.globalAlpha *= .35; ctx.fillRect(x - p.vx * .035, y - p.vy * .035, p.size * .7, p.size * .7); ctx.restore();
+    }
+  }
+
+  function launchFullHeartCelebration(now) {
+    const hearts = [];
+    for (let i = 0; i < (reduced ? 24 : 42); i++) {
+      const color = randomRainbowColor();
+      if (!heartSprites.has(color)) {
+        const sprite = document.createElement("canvas"); sprite.width = cake.heart.width; sprite.height = cake.heart.height;
+        const target = sprite.getContext("2d"); target.drawImage(cake.heart, 0, 0); target.globalCompositeOperation = "source-in"; target.fillStyle = color; target.fillRect(0, 0, sprite.width, sprite.height); heartSprites.set(color, sprite);
+      }
+      hearts.push({ x: rand(18, w - 18), y: h + rand(10, h * .45), color, sprite: heartSprites.get(color), size: rand(18, 48), start: now + rand(0, 900), duration: rand(3300, 5100), sway: rand(10, 34), rise: rand(h * .55, h * .95), phase: rand(0, TAU) });
+    }
+    secretCelebration = { hearts, start: now, end: now + 6200 };
+  }
+
+  function drawSecretCelebration(now) {
+    if (!secretCelebration) return;
+    if (now > secretCelebration.end) { secretCelebration = null; return; }
+    const q = 1 - (secretCelebration.end - now) / 6200;
+    for (const heart of secretCelebration.hearts) {
+      if (now < heart.start) continue;
+      const age = now - heart.start, progress = Math.min(1, age / heart.duration), angle = heart.phase + progress * TAU * 1.5;
+      const x = clamp(heart.x + Math.sin(angle) * heart.sway, heart.size / 2, w - heart.size / 2);
+      const y = heart.y - heart.rise * progress;
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = (1 - progress) * (1 - ease((q - .8) / .2)); ctx.translate(x, y); ctx.rotate(Math.sin(angle) * .18); ctx.drawImage(heart.sprite, -heart.size / 2, -heart.size / 2, heart.size, heart.size); ctx.restore();
+    }
+    const textY = layout.numberY + layout.numberSize * .72 + (layout.cakeY - layout.numberY) * .18;
+    const textSize = clamp(Math.min(w, h) * .065, 22, 36);
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, ease(q * 4)) * (1 - ease((q - .78) / .22)); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `400 ${textSize}px "Birthday Name", "YouYuan", sans-serif`; const textGradient = ctx.createLinearGradient(layout.centerX - textSize * 5, textY, layout.centerX + textSize * 5, textY); textGradient.addColorStop(0, "#8edcff"); textGradient.addColorStop(.5, "#ffffff"); textGradient.addColorStop(1, "#b9d7ff"); ctx.fillStyle = textGradient; ctx.shadowColor = "#86dfff"; ctx.shadowBlur = 20; ctx.fillText("愿你的每一天都闪闪发光", layout.centerX, textY + Math.sin(q * TAU * 2) * 2); ctx.restore();
+  }
+
+  function drawFinalCelebration(now, elapsed) {
+    if (intro || elapsed < 25) return;
+    const cycle = Math.floor((elapsed - 25) / 36);
+    if (cycle !== celebrationCycle) { celebrationCycle = cycle; launchFirework(w * .2, h * .3); launchFirework(w * .8, h * .3); }
+    const phase = (elapsed - 25) % 36;
+    if (phase > 7) return;
+    const alpha = Math.sin(Math.PI * phase / 7) * .72;
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = alpha;
+    const gradient = ctx.createRadialGradient(layout.centerX, layout.cakeY, 0, layout.centerX, layout.cakeY, layout.cakeSize * .9); gradient.addColorStop(0, "rgba(255,220,130,.24)"); gradient.addColorStop(1, "rgba(255,80,190,0)"); ctx.fillStyle = gradient; ctx.fillRect(0, 0, w, h);
+    const ringY = layout.cakeY - layout.cakeSize * .46, ringRadius = layout.cakeSize * .32;
+    ctx.strokeStyle = "rgba(255,215,126,.86)"; ctx.lineWidth = Math.max(1.5, layout.cakeSize * .009); ctx.shadowColor = "#ff7bd5"; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.arc(layout.centerX, ringY, ringRadius * (1 + .08 * Math.sin(phase * 2)), 0, TAU); ctx.stroke();
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `700 ${Math.max(11, layout.cakeSize * .052)}px "Birthday Name", sans-serif`; ctx.fillStyle = "#fff1bf"; ctx.fillText("Happy Birthday", layout.centerX, ringY);
+    for (let i = 0; i < 28; i++) {
+      const angle = i / 28 * TAU + phase * .7, radius = ringRadius * (1.16 + .14 * Math.sin(i * 2.7 + phase));
+      const x = layout.centerX + Math.cos(angle) * radius, y = ringY + Math.sin(angle) * radius * .38;
+      ctx.fillStyle = ["#ff5d8f", "#ffd45e", "#67e8ff", "#bf8cff"][i % 4]; ctx.globalAlpha = alpha * (.45 + .45 * Math.sin(phase * 3 + i)); ctx.fillRect(x, y, 2.2, 2.2);
+    }
+    ctx.restore();
   }
 
   function paintName(target, t, elapsed, centerX, nameY) {
@@ -594,8 +713,11 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     }
     drawBackground(elapsed); drawFireworks(dt); drawMeteors(dt, now);
     const sliceFocus = drawCake(ctx, cake, elapsed, layout, motionPreference.matches, lowDetail);
-    drawText(t, elapsed); drawBlessing(now, 1 - sliceFocus);
+    drawJuiceSpray(now, elapsed, sliceFocus);
+    drawText(t, elapsed); drawNameBursts(now); drawBlessing(now, 1 - sliceFocus);
     drawFloatingHearts(now);
+    drawSecretCelebration(now);
+    drawFinalCelebration(now, elapsed);
     requestAnimationFrame(draw);
   }
   function replayIntro() {
@@ -606,6 +728,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     introStart = performance.now();
     stage.classList.add("playing");
     floatingHearts.length = 0;
+    nameBursts.length = 0; juiceParticles.length = 0; juiceCycle = -1; juiceBursts = [false, false]; secretCelebration = null; nameCelebration = null; clickCount = 0; celebrationCycle = -1;
     fireworks = []; meteors = []; activeBlessings = [];
     nextMeteorAt = 0; nextBlessingAt = 0;
     launchFirework(w * .22, h * .3);
@@ -633,7 +756,14 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   updateVolume();
   startMusic();
   stage.addEventListener("click", event => {
-    if (!event.target.closest(".audio-controls") && event.target !== replay) addFloatingHeart(event);
+    if (!event.target.closest(".audio-controls") && event.target !== replay) {
+      const bounds = stage.getBoundingClientRect();
+      const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+      clickCount++;
+      if (Math.abs(x - layout.centerX) < layout.nameSize * 1.9 && Math.abs(y - layout.nameY) < layout.nameSize * .75) addNameBurst();
+      if (clickCount >= 21) { launchFullHeartCelebration(performance.now()); clickCount = 0; }
+      addFloatingHeart(event);
+    }
   });
   window.addEventListener("resize", resize, { passive: true });
   motionPreference.addEventListener?.("change", resize);
