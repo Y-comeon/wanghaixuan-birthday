@@ -42,6 +42,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   let activeBlessings = [], lastBlessing = "", nextBlessingAt = 0, nextMeteorAt = 0;
   const palette = ["#dff8ff", "#86e7ff", "#4ac7ff", "#7e8dff", "#b89bff", "#ffffff"];
   const fireworkPalette = ["#ff3b30", "#ff9500", "#ffd60a", "#34c759", "#0a84ff", "#5e5ce6", "#bf5af2"];
+  const secretBlessings = ["愿你一直可爱，也一直被爱", "愿你生活有惊喜，快乐有回音", "愿你的每一天都闪闪发光"];
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
@@ -261,7 +262,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
       }
       hearts.push({ x: rand(18, w - 18), y: h + rand(10, h * .45), color, sprite: heartSprites.get(color), size: rand(18, 48), start: now + rand(0, 900), duration: rand(3300, 5100), sway: rand(10, 34), rise: rand(h * .55, h * .95), phase: rand(0, TAU) });
     }
-    secretCelebration = { hearts, start: now, end: now + 6200 };
+    secretCelebration = { hearts, text: secretBlessings[Math.floor(Math.random() * secretBlessings.length)], start: now, end: now + 6200 };
   }
 
   function drawSecretCelebration(now) {
@@ -277,7 +278,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     }
     const textY = layout.numberY + layout.numberSize * .72 + (layout.cakeY - layout.numberY) * .18;
     const textSize = clamp(Math.min(w, h) * .065, 22, 36);
-    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, ease(q * 4)) * (1 - ease((q - .78) / .22)); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `400 ${textSize}px "Birthday Name", "YouYuan", sans-serif`; const textGradient = ctx.createLinearGradient(layout.centerX - textSize * 5, textY, layout.centerX + textSize * 5, textY); textGradient.addColorStop(0, "#8edcff"); textGradient.addColorStop(.5, "#ffffff"); textGradient.addColorStop(1, "#b9d7ff"); ctx.fillStyle = textGradient; ctx.shadowColor = "#86dfff"; ctx.shadowBlur = 20; ctx.fillText("愿你的每一天都闪闪发光", layout.centerX, textY + Math.sin(q * TAU * 2) * 2); ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = Math.min(1, ease(q * 4)) * (1 - ease((q - .78) / .22)); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = `400 ${textSize}px "Birthday Name", "YouYuan", sans-serif`; const textGradient = ctx.createLinearGradient(layout.centerX - textSize * 5, textY, layout.centerX + textSize * 5, textY); textGradient.addColorStop(0, "#8edcff"); textGradient.addColorStop(.5, "#ffffff"); textGradient.addColorStop(1, "#b9d7ff"); ctx.fillStyle = textGradient; ctx.shadowColor = "#86dfff"; ctx.shadowBlur = 20; ctx.fillText(secretCelebration.text, layout.centerX, textY + Math.sin(q * TAU * 2) * 2); ctx.restore();
   }
 
   function drawFinalCelebration(now, elapsed) {
