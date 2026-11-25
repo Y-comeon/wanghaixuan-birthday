@@ -14,7 +14,6 @@ import {
   const invitationCtx = invitationLights.getContext("2d");
   const envelope = document.getElementById("envelope");
   const openInvitation = document.getElementById("openInvitation");
-  const invitationLabel = document.getElementById("invitationLabel");
   const cakeHint = document.getElementById("cakeHint");
   const audio = document.getElementById("birthdayAudio");
   const audioToggle = document.getElementById("audioToggle");
@@ -67,40 +66,6 @@ import {
     size: rand(.6, 2), color: index % 4
   }));
   const invitationColors = [...STREAM_COLORS, "255,185,126"];
-
-  function paintInvitationLabel() {
-    const { width, height } = invitationLabel;
-    const label = openInvitation.querySelector("span");
-    const font = getComputedStyle(label);
-    const mask = document.createElement("canvas");
-    mask.width = width;
-    mask.height = height;
-    const source = mask.getContext("2d");
-    const target = invitationLabel.getContext("2d");
-    if (!source || !target) return;
-    source.font = `${font.fontWeight} ${parseFloat(font.fontSize) * 2}px ${font.fontFamily}`;
-    source.textAlign = "center";
-    source.textBaseline = "middle";
-    source.fillText(label.textContent, width / 2, height / 2);
-    const pixels = source.getImageData(0, 0, width, height).data;
-    target.clearRect(0, 0, width, height);
-    let points = 0;
-    for (let y = 1; y < height; y += 3) {
-      for (let x = 1; x < width; x += 3) {
-        const alpha = pixels[(y * width + x) * 4 + 3];
-        if (alpha < 60) continue;
-        const glint = (x * 7 + y * 3) % 13 < 4;
-        target.fillStyle = glint ? "#f2fdff" : "#a4e1ff";
-        target.globalAlpha = .56 + .44 * alpha / 255;
-        target.beginPath();
-        target.arc(x, y, glint ? 1.46 : 1.27, 0, TAU);
-        target.fill();
-        points++;
-      }
-    }
-    target.globalAlpha = 1;
-    openInvitation.classList.toggle("particle-label", points > 0);
-  }
 
   function measureEnvelope() {
     const width = envelope.offsetWidth, height = envelope.offsetHeight;
@@ -1124,7 +1089,6 @@ import {
     },
     () => { /* Keep the system glyphs if the bundled face cannot load. */ }
   );
-  paintInvitationLabel();
   resize();
   showInvitation();
   requestAnimationFrame(draw);

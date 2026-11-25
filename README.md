@@ -31,7 +31,7 @@ py generate_qr.py https://你的用户名.github.io/仓库名/
 ## 发布到 GitHub Pages
 
 1. 在 GitHub 新建一个仓库。
-2. 上传 `index.html`、`style.css`、`app.js`、`cake.js`、`gentleman2.mp3`、`name-zcool-kuaile.woff2`、`name-font-OFL.txt` 和 `README.md`。
+2. 上传 `index.html`、`style.css`、`app.js`、`cake.js`、`gentleman2.mp3`、`name-zcool-kuaile.woff2`、`invitation-kuaile.woff2`、`name-font-OFL.txt` 和 `README.md`。
 3. 在仓库的 **Settings → Pages** 中选择 `Deploy from a branch`。
 4. 选择默认分支的根目录并保存。
 5. 等待 GitHub Pages 给出网址。
@@ -63,4 +63,5 @@ py generate_qr.py https://你的用户名.github.io/仓库名/
 
 - 可在浏览器开发者工具中分别模拟桌面宽屏、手机竖屏和较矮横屏，重播开场并检查数字“21”与蛋糕、蜡烛的间距。
 - 姓名的粒子轮廓取自本地提供的站酷快乐体三字字体子集，各字略微错落。授权见 `name-font-OFL.txt`。
-- 当前入口脚本版本为 `v=29`，蛋糕脚本版本为 `v=15`，样式版本为 `v=15`。更新网页资源时可递增对应参数以刷新缓存。
+- “点击查收”使用独立的站酷快乐体四字子集，授权见 `name-font-OFL.txt`。
+- 当前入口脚本版本为 `v=31`，蛋糕脚本版本为 `v=15`，样式版本为 `v=17`。更新网页资源时可递增对应参数以刷新缓存。
