@@ -31,7 +31,7 @@ const BUILD_PULSES = [
   { time: 3.37, y: .375, radius: .36, hue: 2 },
   { time: 4.48, y: .548, radius: .25, hue: 0 }
 ];
-const STREAM_COLORS = ["69,205,255", "136,116,255", "242,132,255"];
+export const STREAM_COLORS = ["69,205,255", "136,116,255", "242,132,255"];
 const TRAIL_STRENGTH = [1, .58, .24];
 const rand = (min, max) => min + Math.random() * (max - min);
 const randomRainbowIndex = () => Math.floor(Math.random() * RAINBOW_COLORS.length);
@@ -309,19 +309,58 @@ function cameraAt(elapsed, calm) {
   };
 }
 
-function drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, project, glow) {
-  const visibility = ease(elapsed / .38) * (1 - ease((elapsed - 4.83) / .72));
-  if (visibility <= 0) return;
+function buildTrailAt(elapsed, calm, project) {
   const rise = ease((elapsed - .35) / 4.5);
   const turn = .9 + elapsed * (calm ? 1.15 : 2.1) + elapsed ** 2 * (calm ? .025 : .145);
   const wrap = calm ? 5.6 : 8.6;
   const coreRadius = .52 - rise * .28;
-  const projectTrail = (stream, q, spread = 0, lift = 0) => {
+  return (stream, q, spread = 0, lift = 0) => {
     const angle = turn + stream * TAU / 3 - q * wrap;
     const r = coreRadius + q * (.50 - rise * .16) + spread;
     const y = rise * .62 - q * (.12 + rise * .38) + Math.sin(q * 8 + stream) * .030 + lift;
     return project(Math.cos(angle) * r, y, Math.sin(angle) * r * .88);
   };
+}
+
+function projectCakePoint(out, px, py, pz, sinYaw, cosYaw, sinPitch, cosPitch, centerX, centerY, size) {
+  const toward = px * sinYaw + pz * cosYaw;
+  out.depth = toward * cosPitch + py * sinPitch;
+  out.scale = FOCAL / (FOCAL - out.depth);
+  out.x = centerX + (px * cosYaw - pz * sinYaw) * size * out.scale;
+  out.y = centerY + (toward * sinPitch - py * cosPitch) * size * out.scale;
+  return out;
+}
+
+const approachScale = (elapsed, calm) => calm ? 1 : .87 + .13 * ease(elapsed / 4.5);
+const cakePointSize = (size, lowDetail) => Math.max(.85, Math.min(1.36, size / 270)) * (lowDetail ? 1.14 : 1);
+
+export function buildTrailHeads(elapsed, layout, calm, lowDetail) {
+  const { yaw, pitch } = cameraAt(elapsed, calm);
+  const size = layout.cakeSize * approachScale(elapsed, calm);
+  const sinYaw = Math.sin(yaw), cosYaw = Math.cos(yaw), sinPitch = Math.sin(pitch), cosPitch = Math.cos(pitch);
+  const trailAt = buildTrailAt(elapsed, calm, (x, y, z) => projectCakePoint(
+    {}, x, y, z, sinYaw, cosYaw, sinPitch, cosPitch, layout.centerX, layout.cakeY, size
+  ));
+  return STREAM_COLORS.map((_, stream) => trailAt(stream, 0));
+}
+
+export function drawBuildHead(ctx, cake, stream, x, y, size, opacity) {
+  const radius = size * 23;
+  ctx.globalAlpha = opacity * .95;
+  ctx.drawImage(cake.buildLighting.sparks[stream], x - radius, y - radius, radius * 2, radius * 2);
+  ctx.fillStyle = "#effcff";
+  ctx.globalAlpha = opacity * .93;
+  ctx.fillRect(x - size, y - size, size * 2, size * 2);
+}
+
+export function buildHeadSize(layout, calm, lowDetail) {
+  return cakePointSize(layout.cakeSize * approachScale(0, calm), lowDetail);
+}
+
+function drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, project) {
+  const fade = 1 - ease((elapsed - 4.83) / .72);
+  const visibility = ease(elapsed / .38) * fade;
+  const projectTrail = buildTrailAt(elapsed, calm, project);
   const trailPoints = [];
   const samples = stride === 2 ? 34 : 54;
   ctx.lineCap = "round";
@@ -365,10 +404,7 @@ function drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, project, g
       ctx.fillRect(point.x, point.y, size, size);
     }
     const head = projectTrail(stream, 0);
-    glow(cake.buildLighting.sparks[stream], pointSize * 23, visibility * .95);
-    ctx.fillStyle = "#effcff";
-    ctx.globalAlpha = visibility * .93;
-    ctx.fillRect(head.x - pointSize, head.y - pointSize, pointSize * 2, pointSize * 2);
+    drawBuildHead(ctx, cake, stream, head.x, head.y, pointSize, fade);
   }
 }
 
@@ -446,28 +482,18 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
   const slideLeft = Math.max(0, displayCakeSize * .82 - viewportWidth * .135);
   const displayCakeX = Math.min(normalX, Math.max(displayCakeSize * .69 + 9, normalX - slideLeft));
   const centerX = normalX + (displayCakeX - normalX) * focus;
-  const approach = calm ? 1 : .87 + .13 * ease(elapsed / 4.5);
+  const approach = approachScale(elapsed, calm);
   const cakeSize = normalSize * approach + (displayCakeSize - normalSize) * focus;
   const { yaw, pitch } = cameraAt(elapsed, calm);
   const sinYaw = Math.sin(yaw), cosYaw = Math.cos(yaw);
   const sinPitch = Math.sin(pitch), cosPitch = Math.cos(pitch);
-  const pointSize = Math.max(.85, Math.min(1.36, cakeSize / 270)) * (lowDetail ? 1.14 : 1);
+  const pointSize = cakePointSize(cakeSize, lowDetail);
   const stride = lowDetail ? 2 : 1;
   let x, y, scale, depth;
-  const project = (px, py, pz) => {
-    const toward = px * sinYaw + pz * cosYaw;
-    depth = toward * cosPitch + py * sinPitch;
-    scale = FOCAL / (FOCAL - depth);
-    x = centerX + (px * cosYaw - pz * sinYaw) * cakeSize * scale;
-    y = cakeY + (toward * sinPitch - py * cosPitch) * cakeSize * scale;
-  };
   const projected = { x: 0, y: 0, depth: 0, scale: 1 };
-  const projectBuild = (px, py, pz) => {
-    project(px, py, pz);
-    projected.x = x;
-    projected.y = y;
-    projected.depth = depth;
-    projected.scale = scale;
+  const project = (px, py, pz) => {
+    projectCakePoint(projected, px, py, pz, sinYaw, cosYaw, sinPitch, cosPitch, centerX, cakeY, cakeSize);
+    ({ x, y, depth, scale } = projected);
     return projected;
   };
   const detailX = normalX + Math.min(viewportWidth * .25, normalSize * .77);
@@ -617,8 +643,8 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
   }
 
   if (forming) {
-    drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, projectBuild, glow);
-    drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, projectBuild, glow);
+    drawBuildTrails(ctx, cake, elapsed, calm, stride, pointSize, project);
+    drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, project, glow);
   }
 
   const orbitGlow = ease((elapsed - 4.9) / 1.55);

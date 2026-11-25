@@ -1,4 +1,7 @@
-import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake.js?v=14";
+import {
+  STREAM_COLORS, buildHeadSize, buildTrailHeads, createCake, drawBuildHead,
+  drawCake, randomRainbowColor, recolorCandles
+} from "./cake.js?v=15";
 
 (() => {
   "use strict";
@@ -6,6 +9,13 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   const ctx = canvas.getContext("2d", { alpha: false });
   const stage = document.querySelector(".stage");
   const replay = document.getElementById("replay");
+  const invitation = document.getElementById("invitation");
+  const invitationLights = document.getElementById("invitationLights");
+  const invitationCtx = invitationLights.getContext("2d");
+  const envelope = document.getElementById("envelope");
+  const openInvitation = document.getElementById("openInvitation");
+  const invitationLabel = document.getElementById("invitationLabel");
+  const cakeHint = document.getElementById("cakeHint");
   const audio = document.getElementById("birthdayAudio");
   const audioToggle = document.getElementById("audioToggle");
   const volume = document.getElementById("volume");
@@ -13,6 +23,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   const audioStatus = document.getElementById("audioStatus");
   const TAU = Math.PI * 2;
   const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
+  let scene = "invitation", opening = null, envelopeOrbit, invitationStart = 0;
   const birthdayName = "王海璇";
   const nameLettering = [
     { tilt: -.095, offset: .04 },
@@ -47,6 +58,316 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   const rand = (a, b) => a + Math.random() * (b - a);
   const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const invitationDust = Array.from({ length: 72 }, () => ({
+    phase: rand(0, TAU), speed: rand(.1, .33), radius: rand(.76, 1.48),
+    size: rand(.6, 2.1), color: Math.floor(rand(0, STREAM_COLORS.length))
+  }));
+  const passageDust = Array.from({ length: 100 }, (_, index) => ({
+    angle: index * 2.39996, depth: rand(0, 1), speed: rand(.52, 1),
+    size: rand(.6, 2), color: index % 4
+  }));
+  const invitationColors = [...STREAM_COLORS, "255,185,126"];
+
+  function paintInvitationLabel() {
+    const { width, height } = invitationLabel;
+    const label = openInvitation.querySelector("span");
+    const font = getComputedStyle(label);
+    const mask = document.createElement("canvas");
+    mask.width = width;
+    mask.height = height;
+    const source = mask.getContext("2d");
+    const target = invitationLabel.getContext("2d");
+    if (!source || !target) return;
+    source.font = `${font.fontWeight} ${parseFloat(font.fontSize) * 2}px ${font.fontFamily}`;
+    source.textAlign = "center";
+    source.textBaseline = "middle";
+    source.fillText(label.textContent, width / 2, height / 2);
+    const pixels = source.getImageData(0, 0, width, height).data;
+    target.clearRect(0, 0, width, height);
+    let points = 0;
+    for (let y = 1; y < height; y += 3) {
+      for (let x = 1; x < width; x += 3) {
+        const alpha = pixels[(y * width + x) * 4 + 3];
+        if (alpha < 60) continue;
+        const glint = (x * 7 + y * 3) % 13 < 4;
+        target.fillStyle = glint ? "#f2fdff" : "#a4e1ff";
+        target.globalAlpha = .56 + .44 * alpha / 255;
+        target.beginPath();
+        target.arc(x, y, glint ? 1.46 : 1.27, 0, TAU);
+        target.fill();
+        points++;
+      }
+    }
+    target.globalAlpha = 1;
+    openInvitation.classList.toggle("particle-label", points > 0);
+  }
+
+  function measureEnvelope() {
+    const width = envelope.offsetWidth, height = envelope.offsetHeight;
+    envelopeOrbit = {
+      x: envelope.offsetLeft + width / 2, y: envelope.offsetTop + height / 2,
+      rx: Math.min(w / 2 - 15, width * .69), ry: height * .82, width, height
+    };
+  }
+
+  function orbitPoint(time, stream) {
+    time -= invitationStart;
+    const angle = time * (motionPreference.matches ? .23 : .88) + stream * TAU / 3;
+    const { x, y, rx, ry } = envelopeOrbit;
+    const tilt = .15 * Math.sin(time * .28 + stream * 2);
+    return {
+      x: x + Math.cos(angle) * rx * (.92 + .08 * Math.sin(angle - stream)),
+      y: y + Math.sin(angle) * ry + Math.cos(angle) * rx * tilt
+    };
+  }
+
+  function openingCurves() {
+    const calm = motionPreference.matches;
+    const ends = buildTrailHeads(0, layout, calm, lowDetail);
+    const next = buildTrailHeads(.02, layout, calm, lowDetail);
+    const flightTime = opening.time + opening.delay;
+    const tangent = (opening.duration - opening.delay) / (.02 * 3);
+    return ends.map((end, stream) => {
+      const start = orbitPoint(flightTime, stream);
+      const ahead = orbitPoint(flightTime + .02, stream);
+      return [
+        start,
+        { x: start.x + (ahead.x - start.x) * tangent, y: start.y + (ahead.y - start.y) * tangent },
+        { x: end.x - (next[stream].x - end.x) * tangent, y: end.y - (next[stream].y - end.y) * tangent },
+        end
+      ];
+    });
+  }
+
+  function invitationPoint(time, stream) {
+    if (!opening || time <= opening.time + opening.delay) return orbitPoint(time, stream);
+    const [a, b, c, d] = opening.curves[stream];
+    const q = clamp((time - opening.time - opening.delay) / (opening.duration - opening.delay), 0, 1);
+    const m = 1 - q;
+    const curl = opening.calm ? 0 : Math.sin(Math.PI * q) ** 2;
+    const angle = q * TAU + stream * TAU / 3;
+    return {
+      x: m ** 3 * a.x + 3 * m * m * q * b.x + 3 * m * q * q * c.x + q ** 3 * d.x + curl * envelopeOrbit.rx * .26 * Math.cos(angle),
+      y: m ** 3 * a.y + 3 * m * m * q * b.y + 3 * m * q * q * c.y + q ** 3 * d.y + curl * envelopeOrbit.ry * .35 * Math.sin(angle)
+    };
+  }
+
+  function moveLetter(progress) {
+    const flap = ease(progress / .3);
+    const lift = ease((progress - .21) / .30);
+    const push = ease((progress - .46) / .49);
+    const calm = opening.calm;
+    const { y, width, height } = envelopeOrbit;
+    const scale = calm ? 1.12 : Math.max(w / (width * .88), h / (height * .87)) * 1.2;
+    const rise = -(calm ? .15 : .54) * height * lift;
+    const letterY = rise * (1 - push) + (h / 2 - y) * push;
+    const style = invitation.style;
+    style.setProperty("--flap-angle", `${-168 * flap}deg`);
+    style.setProperty("--button-opacity", 1 - ease(progress / .11));
+    style.setProperty("--flap-layer", flap < .54 ? 1 : "auto");
+    style.setProperty("--letter-y", `${letterY}px`);
+    style.setProperty("--letter-scale", 1 + (scale - 1) * push);
+    style.setProperty("--letter-layer", push > .16 ? 1 : 0);
+    style.setProperty("--pocket-y", `${push * 48}%`);
+    style.setProperty("--shell-opacity", 1 - ease((progress - .59) / .22));
+    style.setProperty("--title-opacity", 1 - ease((progress - .52) / .23));
+    style.setProperty("--letter-opacity", 1 - ease((progress - .80) / .18));
+    const ink = ease((progress - .62) / .27);
+    style.setProperty("--ink-scale", ink * 1.8);
+    style.setProperty("--ink-opacity", ease(ink * 2));
+    return { x: w / 2, y: y + letterY, push };
+  }
+
+  function drawPassage(ctx, progress, center) {
+    const light = ease((progress - .24) / .2) * (1 - ease((progress - .79) / .21));
+    if (light <= 0) return;
+    const a = opening.calm ? .32 : 1;
+    const radius = Math.min(w, h) * (.13 + center.push * .64);
+    const glow = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, radius);
+    glow.addColorStop(0, "rgba(174,202,255,.24)");
+    glow.addColorStop(.42, "rgba(135,100,235,.16)");
+    glow.addColorStop(1, "rgba(99,85,220,0)");
+    ctx.globalAlpha = light * a;
+    ctx.fillStyle = glow;
+    ctx.fillRect(center.x - radius, center.y - radius, radius * 2, radius * 2);
+
+    const arcLight = light * ease((progress - .48) / .23) * a;
+    if (arcLight > 0) {
+      for (let i = 0; i < 4; i++) {
+        const arcRadius = radius * (.23 + i * .23);
+        const angle = i * 1.77 + center.push * 1.4;
+        ctx.beginPath();
+        ctx.ellipse(center.x, center.y, arcRadius, arcRadius * .72, -.24, angle, angle + 1.65);
+        ctx.strokeStyle = `rgb(${invitationColors[i]})`;
+        ctx.lineWidth = 4;
+        ctx.globalAlpha = arcLight * .09;
+        ctx.stroke();
+        ctx.lineWidth = .8;
+        ctx.globalAlpha = arcLight * .45;
+        ctx.stroke();
+      }
+    }
+
+    const count = reduced || lowDetail ? 50 : passageDust.length;
+    for (let i = 0; i < count; i++) {
+      const p = passageDust[i];
+      const depth = (p.depth + center.push * p.speed * (opening.calm ? .28 : .91)) % 1;
+      const distance = (.12 + depth ** 2.6 * 1.6) * radius;
+      const angle = p.angle + center.push * .76 * a;
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const x = center.x + dx * distance, y = center.y + dy * distance;
+      const tail = depth ** 2 * radius * .15 * center.push * a;
+      ctx.globalAlpha = light * a * ease(depth / .13) * (1 - ease((depth - .78) / .22));
+      ctx.fillStyle = ctx.strokeStyle = `rgb(${invitationColors[p.color]})`;
+      ctx.lineWidth = .7 + p.size * depth * .7;
+      ctx.beginPath();
+      ctx.moveTo(x - dx * tail, y - dy * tail);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.fillRect(x, y, p.size, p.size);
+    }
+  }
+
+  function drawInvitationTrail(ctx, t, stream, fade, duration) {
+    const steps = reduced || lowDetail ? 24 : 44;
+    const points = Array.from({ length: steps + 1 }, (_, i) => invitationPoint(t - duration * i / steps, stream));
+    const color = `rgb(${STREAM_COLORS[stream]})`;
+    const age = t - invitationStart;
+    for (let i = steps; i > 0; i--) {
+      const p = points[i], next = points[i - 1], strength = (1 - i / (steps + 1)) ** 1.5;
+      const tangent = Math.atan2(next.y - p.y, next.x - p.x);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(next.x, next.y);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = strength * fade * .12;
+      ctx.lineWidth = 4 + strength * 6;
+      ctx.stroke();
+      ctx.globalAlpha = strength * fade * .66;
+      ctx.lineWidth = .55 + strength;
+      ctx.stroke();
+      if (i % 2 !== 0) continue;
+      const ripple = Math.sin(age * 5 - i * .7) * (2 + i * .11);
+      ctx.fillStyle = i % 4 === 0 ? "#ffe7b8" : color;
+      ctx.globalAlpha = strength * fade * (.55 + .4 * Math.sin(i + age * 4) ** 2);
+      ctx.fillRect(p.x - Math.sin(tangent) * ripple, p.y + Math.cos(tangent) * ripple, 1.4, 1.4);
+    }
+    return points[0];
+  }
+
+  function drawOrbitingSpecks(ctx, head, stream, time, fade, calm) {
+    const count = reduced || lowDetail ? 5 : 8;
+    const spin = time * (calm ? .9 : 3.2) + stream * 2.1;
+    const tilt = stream * Math.PI / 3 + .26 * Math.sin(spin * .2);
+    const cosTilt = Math.cos(tilt), sinTilt = Math.sin(tilt);
+    const radius = reduced ? 14 : 20;
+    for (let i = 0; i < count; i++) {
+      const inner = i % 2 === 0;
+      const angle = i / count * TAU + spin * (inner ? 1.28 : -.78);
+      const orbit = radius * (inner ? .55 : 1);
+      ctx.fillStyle = i % 3 === 0 ? "#ffdbac" : `rgb(${STREAM_COLORS[(stream + i % 2) % STREAM_COLORS.length]})`;
+      for (let tail = 2; tail >= 0; tail--) {
+        const phase = angle - tail * (inner ? .18 : -.18);
+        const u = Math.cos(phase) * orbit, v = Math.sin(phase) * orbit * .48;
+        const x = head.x + u * cosTilt - v * sinTilt;
+        const y = head.y + u * sinTilt + v * cosTilt;
+        const light = .55 + .45 * Math.sin(phase);
+        const size = (.65 + light * .95) * (1 - tail * .18);
+        ctx.globalAlpha = fade * (.38 + light * .62) * (1 - tail / 3);
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, TAU);
+        ctx.fill();
+        if (tail === 0 && light > .75) {
+          ctx.globalAlpha *= .36;
+          ctx.fillRect(x - size * 2, y - .35, size * 4, .7);
+          ctx.fillRect(x - .35, y - size * 2, .7, size * 4);
+        }
+      }
+    }
+  }
+
+  function drawInvitation(t) {
+    ctx.drawImage(background, 0, 0, w, h);
+    const lights = invitationCtx;
+    lights.clearRect(0, 0, w, h);
+    const calm = motionPreference.matches;
+    const progress = opening ? clamp((t - opening.time) / opening.duration, 0, 1) : 0;
+    const fade = 1 - ease((progress - .29) / .71);
+    const age = t - invitationStart;
+    const { x, y, rx, ry } = envelopeOrbit;
+    lights.save();
+    lights.globalCompositeOperation = "lighter";
+    if (opening) drawPassage(lights, progress, moveLetter(progress));
+    const dustCount = reduced || lowDetail ? 32 : invitationDust.length;
+    for (let i = 0; i < dustCount; i++) {
+      const p = invitationDust[i];
+      const angle = p.phase + age * p.speed * (calm ? .18 : 1);
+      const px = x + Math.cos(angle) * Math.min(w * .48, rx * p.radius);
+      const py = y + Math.sin(angle) * ry * p.radius;
+      const pulse = .5 + .5 * Math.sin(age * 1.9 + p.phase * 3);
+      lights.fillStyle = `rgb(${STREAM_COLORS[p.color]})`;
+      lights.globalAlpha = fade * (.16 + pulse * .58);
+      lights.fillRect(px, py, p.size, p.size);
+      if (i % 11 === 0) {
+        lights.fillRect(px - p.size, py + p.size * .35, p.size * 3, .7);
+        lights.fillRect(px + p.size * .35, py - p.size, .7, p.size * 3);
+      }
+    }
+    const size = buildHeadSize(layout, calm, lowDetail);
+    const tailDuration = calm ? .34 : reduced ? .84 : 1.08;
+    lights.lineCap = "round";
+    for (let stream = 0; stream < STREAM_COLORS.length; stream++) {
+      const head = drawInvitationTrail(lights, t, stream, fade, tailDuration);
+      drawBuildHead(lights, cake, stream, head.x, head.y, size, 1);
+      drawOrbitingSpecks(lights, head, stream, age, fade, calm);
+    }
+    lights.restore();
+  }
+
+  function showInvitation() {
+    scene = "invitation";
+    opening = null;
+    invitationStart = performance.now() / 1000;
+    invitation.removeAttribute("style");
+    invitation.hidden = false;
+    invitationLights.hidden = false;
+    invitation.classList.remove("opening");
+    openInvitation.disabled = false;
+    replay.hidden = true;
+    cakeHint.hidden = true;
+    stage.classList.remove("playing");
+    intro = true;
+    introStart = 0;
+    samples = slowSamples = 0;
+    if (lowDetail) {
+      lowDetail = false;
+      resizeCanvas();
+    }
+    floatingHearts.length = 0;
+    nameBursts.length = 0;
+    juiceParticles.length = 0;
+    juiceCycle = -1;
+    juiceBursts = [false, false];
+    secretCelebration = nameCelebration = null;
+    clickCount = 0;
+    celebrationCycle = -1;
+    fireworks = [];
+    meteors = [];
+    activeBlessings = [];
+    nextMeteorAt = nextBlessingAt = 0;
+    measureEnvelope();
+  }
+
+  function beginOpening() {
+    if (scene !== "invitation") return;
+    scene = "opening";
+    const calm = motionPreference.matches;
+    opening = { time: performance.now() / 1000, duration: calm ? .85 : 3.1, delay: calm ? .12 : .75, calm };
+    opening.curves = openingCurves();
+    moveLetter(0);
+    invitation.classList.add("opening");
+    openInvitation.disabled = true;
+  }
 
   function createLayout(width, height) {
     const numberY = height * .113;
@@ -343,6 +664,10 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     canvas.width = Math.max(1, Math.round(w * pixelRatio));
     canvas.height = Math.max(1, Math.round(h * pixelRatio));
     ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    const invitationRatio = Math.min(pixelRatio, 1.1);
+    invitationLights.width = Math.max(1, Math.round(w * invitationRatio));
+    invitationLights.height = Math.max(1, Math.round(h * invitationRatio));
+    invitationCtx.setTransform(invitationLights.width / w, 0, 0, invitationLights.height / h, 0, 0);
     nameImage = englishImage = null;
     buildBackground();
   }
@@ -357,6 +682,10 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     }
     buildScene();
     resizeCanvas();
+    if (scene !== "cake") {
+      measureEnvelope();
+      if (opening) opening.curves = openingCurves();
+    }
   }
   function buildScene() {
     const n = reduced ? 90 : Math.min(240, Math.round(w * h / 6500));
@@ -701,6 +1030,14 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     const interval = now - last;
     const t = now / 1000, dt = Math.min(.06, interval / 1000 || .016);
     last = now;
+    if (scene === "opening" && t >= opening.time + opening.duration) {
+      startCake((opening.time + opening.duration) * 1000);
+    }
+    if (scene !== "cake") {
+      drawInvitation(t);
+      requestAnimationFrame(draw);
+      return;
+    }
     const elapsed = (now - introStart) / 1000;
     if (intro && elapsed >= 12.2) { intro = false; stage.classList.remove("playing"); }
     if (!lowDetail && elapsed > 1 && interval > 0 && interval < 250 && !document.hidden) {
@@ -721,21 +1058,28 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     drawFinalCelebration(now, elapsed);
     requestAnimationFrame(draw);
   }
-  function replayIntro() {
+  function startCake(start) {
+    scene = "cake";
+    opening = null;
+    invitation.hidden = true;
+    invitationLights.hidden = true;
+    replay.hidden = false;
+    cakeHint.hidden = false;
     recolorCandles(cake);
     const digitColor = randomRainbowColor();
     digitColors = [digitColor, digitColor];
     intro = true;
-    introStart = performance.now();
+    introStart = start;
     stage.classList.add("playing");
-    floatingHearts.length = 0;
-    nameBursts.length = 0; juiceParticles.length = 0; juiceCycle = -1; juiceBursts = [false, false]; secretCelebration = null; nameCelebration = null; clickCount = 0; celebrationCycle = -1;
-    fireworks = []; meteors = []; activeBlessings = [];
-    nextMeteorAt = 0; nextBlessingAt = 0;
     launchFirework(w * .22, h * .3);
     launchFirework(w * .78, h * .3);
   }
-  replay.addEventListener("click", e => { e.stopPropagation(); replayIntro(); });
+  openInvitation.addEventListener("click", beginOpening);
+  replay.addEventListener("click", event => {
+    event.stopPropagation();
+    showInvitation();
+    if (event.detail === 0) openInvitation.focus({ preventScroll: true });
+  });
   audioToggle.addEventListener("click", toggleMusic);
   function updateVolume() {
     const level = Number(volume.value);
@@ -757,7 +1101,7 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
   updateVolume();
   startMusic();
   stage.addEventListener("click", event => {
-    if (!event.target.closest(".audio-controls") && event.target !== replay) {
+    if (scene === "cake" && !event.target.closest(".audio-controls, .invitation") && event.target !== replay) {
       const bounds = stage.getBoundingClientRect();
       const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
       clickCount++;
@@ -780,5 +1124,8 @@ import { createCake, drawCake, randomRainbowColor, recolorCandles } from "./cake
     },
     () => { /* Keep the system glyphs if the bundled face cannot load. */ }
   );
-  resize(); replayIntro(); requestAnimationFrame(draw);
+  paintInvitationLabel();
+  resize();
+  showInvitation();
+  requestAnimationFrame(draw);
 })();
