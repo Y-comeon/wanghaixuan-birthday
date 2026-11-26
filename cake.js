@@ -1,5 +1,12 @@
 const TAU = Math.PI * 2;
 const BUILD_END = 5.55;
+const BUILD_DURATION = 8;
+
+export function cakeTimeline(seconds) {
+  return seconds < BUILD_DURATION
+    ? seconds * BUILD_END / BUILD_DURATION
+    : seconds - (BUILD_DURATION - BUILD_END);
+}
 const FOCAL = 3.05;
 const DEPTH_LEVELS = 5;
 const CAKE_COLORS = ["64,153,255", "74,194,255", "129,220,255", "220,250,255", "255,207,134", "207,169,253", "255,157,193"];
@@ -32,6 +39,7 @@ const BUILD_PULSES = [
   { time: 4.48, y: .548, radius: .25, hue: 0 }
 ];
 export const STREAM_COLORS = ["69,205,255", "136,116,255", "242,132,255"];
+const ORBIT_COLORS = ["255,69,96", "255,146,60", "70,157,255"];
 const TRAIL_STRENGTH = [1, .58, .24];
 const rand = (min, max) => min + Math.random() * (max - min);
 const randomRainbowIndex = () => Math.floor(Math.random() * RAINBOW_COLORS.length);
@@ -121,7 +129,7 @@ function createHeartSprite() {
   return sprite;
 }
 
-export function createCake(compact, previousCandles = []) {
+export function createCake(compact, previousCandles = [], previousOrbits = []) {
   const particles = [];
   const count = amount => Math.round(amount * (compact ? .44 : .77));
   let cuttable = false;
@@ -224,7 +232,9 @@ export function createCake(compact, previousCandles = []) {
   return {
     particles, candles, cutFaces, heart: createHeartSprite(),
     groups: Array.from({ length: COLORS.length * DEPTH_LEVELS }, () => []),
-    glows: [glowSprite("75,194,255"), glowSprite("255,198,101")],
+    candleGlow: glowSprite("255,198,101"),
+    orbitGlows: ORBIT_COLORS.map(glowSprite),
+    orbits: previousOrbits,
     buildLighting: createBuildLighting(),
     dust: Array.from({ length: count(930) }, () => ({
       angle: rand(0, TAU), radius: rand(.55, 1.01), y: rand(-.08, .18), size: rand(.32, 1.18),
@@ -243,6 +253,24 @@ export function recolorCandles({ candles, particles }) {
     candle.color = randomCandleColor();
     for (const index of candle.wax) particles[index].color = candle.color;
   }
+}
+
+export function randomizeCakeOrbits(cake) {
+  const colors = ORBIT_COLORS.map((_, index) => index);
+  for (let i = colors.length - 1; i > 0; i--) {
+    const j = Math.floor(rand(0, i + 1));
+    [colors[i], colors[j]] = [colors[j], colors[i]];
+  }
+  const alignment = rand(0, TAU);
+  cake.orbits = colors.map((color, index) => ({
+    color,
+    radius: .59 + index * .027 + rand(0, .014),
+    height: .27 + index * .025,
+    rise: .13 + index * .052 + rand(0, .036),
+    heading: alignment + index * Math.PI / 4 + rand(-.20, .20),
+    phase: index * TAU / colors.length + rand(-.26, .26),
+    speed: rand(.78, 1.13)
+  }));
 }
 
 function createCutFaces({ radius, top, bottom }, coveredRadius, compact) {
@@ -428,6 +456,29 @@ function drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, project, g
       ctx.fillStyle = i % 6 === 0 ? "#e3f5ff" : color;
       ctx.fillRect(p.x, p.y, size, size);
       if (i % 11 === 0) glow(cake.buildLighting.sparks[pulse.hue], pointSize * 11, alpha * near * .52);
+    }
+    if (calm) continue;
+    const sparks = stride === 2 ? 16 : 30;
+    const trailAge = Math.max(0, age - .085);
+    ctx.strokeStyle = color;
+    for (let i = 0; i < sparks; i++) {
+      const angle = i * 2.39996 + pulse.time;
+      const speed = .16 + .27 * (.5 + .5 * Math.sin(i * 7.13));
+      const lift = .17 + .22 * (.5 + .5 * Math.cos(i * 4.7));
+      const tailRadius = pulse.radius + speed * trailAge ** .78;
+      const tail = project(Math.cos(angle) * tailRadius,
+        pulse.y + lift * trailAge - .28 * trailAge ** 2, Math.sin(angle) * tailRadius * .88);
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      const sparkRadius = pulse.radius + speed * age ** .78;
+      const head = project(Math.cos(angle) * sparkRadius,
+        pulse.y + lift * age - .28 * age ** 2, Math.sin(angle) * sparkRadius * .88);
+      ctx.lineTo(head.x, head.y);
+      ctx.lineWidth = pointSize * (i % 4 === 0 ? 1.4 : .75);
+      ctx.globalAlpha = alpha * clamp01(.67 + head.depth * .6);
+      ctx.stroke();
+      ctx.fillStyle = i % 3 === 0 ? "#ffe1a8" : "#e3f5ff";
+      ctx.fillRect(head.x, head.y, pointSize * 1.3, pointSize * 1.3);
     }
   }
 }
@@ -647,22 +698,32 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     drawBuildPulses(ctx, cake, elapsed, calm, stride, pointSize, project, glow);
   }
 
-  const orbitGlow = ease((elapsed - 4.9) / 1.55);
+  const orbitTime = elapsed - BUILD_END;
+  const orbitGlow = ease(orbitTime / .9);
   if (orbitGlow > 0) {
-    ctx.fillStyle = "#b4e9ff";
-    for (let streak = 0; streak < 3; streak++) {
-      const head = drift * (.72 + streak * .16) + streak * TAU / 3;
-      const radius = .58 + streak * .052;
-      for (let i = 43; i >= 0; i--) {
-        const trail = i / 44;
-        const angle = head - trail * .72;
-        const lift = .006 + Math.sin(angle * 1.5 + streak) * .055;
-        project(Math.cos(angle) * radius, lift, Math.sin(angle) * radius * .88);
+    const trailPoints = lowDetail ? 24 : 44;
+    for (const orbit of cake.orbits) {
+      const head = orbit.phase + orbitTime * orbit.speed * (calm ? .38 : 1);
+      // Increasing angles turn clockwise in the overhead projection (+z points down).
+      const trailArc = calm ? .46 : .84;
+      ctx.fillStyle = `rgb(${ORBIT_COLORS[orbit.color]})`;
+      for (let i = trailPoints - 1; i >= 0; i--) {
+        const trail = i / trailPoints;
+        const angle = head - trail * trailArc;
+        const height = orbit.height + orbit.rise * Math.sin(angle - orbit.heading) * (calm ? .65 : 1);
+        const px = Math.cos(angle) * orbit.radius;
+        const pz = Math.sin(angle) * orbit.radius * .88;
+        project(px, height, pz);
+        const facing = ease(.5 + (px * sinYaw + pz * cosYaw) / (orbit.radius * 2));
+        const light = orbitGlow * (.40 + facing * .58);
         if (i === 0) {
-          glow(cake.glows[0], 10 * pointSize * scale, orbitGlow * (.53 + depth * .31));
+          glow(cake.orbitGlows[orbit.color], 12 * pointSize * scale, light);
+          const size = 2.3 * pointSize * scale;
+          ctx.globalAlpha = light;
+          ctx.fillRect(x - size / 2, y - size / 2, size, size);
         } else {
-          const size = (1.18 - trail * .74) * pointSize * scale;
-          ctx.globalAlpha = orbitGlow * (1 - trail) * (.41 + depth * .24);
+          const size = (1.34 - trail * .8) * pointSize * scale;
+          ctx.globalAlpha = light * (1 - trail) ** 2 * .73;
           ctx.fillRect(x, y, size, size);
         }
       }
@@ -675,7 +736,7 @@ export function drawCake(ctx, cake, elapsed, layout, calm, lowDetail) {
     if (!opacity) continue;
     const flicker = Math.sin(drift * 7 + candle.x * 26 + candle.z * 13);
     project(candle.x + flicker * .003, candle.y + .023, candle.z);
-    glow(cake.glows[1], 10 * scale * flameSize, opacity * (.65 + flicker * .12));
+    glow(cake.candleGlow, 10 * scale * flameSize, opacity * (.65 + flicker * .12));
     for (let i = 0; i < candle.sparks.length; i += stride) {
       const spark = candle.sparks[i];
       const taper = Math.sin(spark.height / .058 * Math.PI) * .011;

@@ -1,7 +1,7 @@
 import {
   STREAM_COLORS, buildHeadSize, buildTrailHeads, createCake, drawBuildHead,
-  drawCake, randomRainbowColor, recolorCandles
-} from "./cake.js?v=15";
+  cakeTimeline, drawCake, randomizeCakeOrbits, randomRainbowColor, recolorCandles
+} from "./cake.js?v=19";
 
 (() => {
   "use strict";
@@ -57,9 +57,9 @@ import {
   const rand = (a, b) => a + Math.random() * (b - a);
   const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const invitationDust = Array.from({ length: 72 }, () => ({
+  const invitationDust = Array.from({ length: 200 }, () => ({
     phase: rand(0, TAU), speed: rand(.1, .33), radius: rand(.76, 1.48),
-    size: rand(.6, 2.1), color: Math.floor(rand(0, STREAM_COLORS.length))
+    size: rand(.65, 2.3), color: Math.floor(rand(0, 4))
   }));
   const passageDust = Array.from({ length: 100 }, (_, index) => ({
     angle: index * 2.39996, depth: rand(0, 1), speed: rand(.52, 1),
@@ -71,7 +71,7 @@ import {
     const width = envelope.offsetWidth, height = envelope.offsetHeight;
     envelopeOrbit = {
       x: envelope.offsetLeft + width / 2, y: envelope.offsetTop + height / 2,
-      rx: Math.min(w / 2 - 15, width * .69), ry: height * .82, width, height
+      rx: Math.max(1, Math.min(w / 2 - 15, width * .69)), ry: height * .82, width, height
     };
   }
 
@@ -89,7 +89,7 @@ import {
   function openingCurves() {
     const calm = motionPreference.matches;
     const ends = buildTrailHeads(0, layout, calm, lowDetail);
-    const next = buildTrailHeads(.02, layout, calm, lowDetail);
+    const next = buildTrailHeads(cakeTimeline(.02), layout, calm, lowDetail);
     const flightTime = opening.time + opening.delay;
     const tangent = (opening.duration - opening.delay) / (.02 * 3);
     return ends.map((end, stream) => {
@@ -221,7 +221,7 @@ import {
   }
 
   function drawOrbitingSpecks(ctx, head, stream, time, fade, calm) {
-    const count = reduced || lowDetail ? 5 : 8;
+    const count = calm ? 5 : reduced || lowDetail ? 8 : 12;
     const spin = time * (calm ? .9 : 3.2) + stream * 2.1;
     const tilt = stream * Math.PI / 3 + .26 * Math.sin(spin * .2);
     const cosTilt = Math.cos(tilt), sinTilt = Math.sin(tilt);
@@ -251,8 +251,9 @@ import {
     }
   }
 
-  function drawInvitation(t) {
+  function drawInvitation(t, dt, now) {
     ctx.drawImage(background, 0, 0, w, h);
+    drawMeteors(dt, now);
     const lights = invitationCtx;
     lights.clearRect(0, 0, w, h);
     const calm = motionPreference.matches;
@@ -263,17 +264,18 @@ import {
     lights.save();
     lights.globalCompositeOperation = "lighter";
     if (opening) drawPassage(lights, progress, moveLetter(progress));
-    const dustCount = reduced || lowDetail ? 32 : invitationDust.length;
+    const dustCount = calm ? 64 : reduced || lowDetail ? 110 : invitationDust.length;
     for (let i = 0; i < dustCount; i++) {
       const p = invitationDust[i];
       const angle = p.phase + age * p.speed * (calm ? .18 : 1);
       const px = x + Math.cos(angle) * Math.min(w * .48, rx * p.radius);
-      const py = y + Math.sin(angle) * ry * p.radius;
+      const py = y + Math.sin(angle) * ry * p.radius + Math.cos(angle * 2 + p.phase) * ry * .13;
       const pulse = .5 + .5 * Math.sin(age * 1.9 + p.phase * 3);
-      lights.fillStyle = `rgb(${STREAM_COLORS[p.color]})`;
-      lights.globalAlpha = fade * (.16 + pulse * .58);
+      lights.fillStyle = `rgb(${invitationColors[p.color]})`;
+      lights.globalAlpha = fade * (.13 + pulse * .66);
       lights.fillRect(px, py, p.size, p.size);
-      if (i % 11 === 0) {
+      if (i % 9 === 0) {
+        lights.globalAlpha *= pulse;
         lights.fillRect(px - p.size, py + p.size * .35, p.size * 3, .7);
         lights.fillRect(px + p.size * .35, py - p.size, .7, p.size * 3);
       }
@@ -282,6 +284,19 @@ import {
     const tailDuration = calm ? .34 : reduced ? .84 : 1.08;
     lights.lineCap = "round";
     for (let stream = 0; stream < STREAM_COLORS.length; stream++) {
+      if (!calm && fade > .01) {
+        const sweep = age * (.24 + stream * .06) + stream * TAU / 3;
+        lights.strokeStyle = `rgb(${invitationColors[stream]})`;
+        lights.beginPath();
+        lights.ellipse(x, y, rx * (.83 + stream * .09), ry * (.79 + stream * .13),
+          (stream - 1) * .19, sweep, sweep + 1.45);
+        lights.lineWidth = 4;
+        lights.globalAlpha = .065 * fade;
+        lights.stroke();
+        lights.lineWidth = .8;
+        lights.globalAlpha = .24 * fade;
+        lights.stroke();
+      }
       const head = drawInvitationTrail(lights, t, stream, fade, tailDuration);
       drawBuildHead(lights, cake, stream, head.x, head.y, size, 1);
       drawOrbitingSpecks(lights, head, stream, age, fade, calm);
@@ -643,7 +658,7 @@ import {
     reduced = w * h < 420000 || motionPreference.matches;
     if (!cake || compactCake !== reduced) {
       compactCake = reduced;
-      cake = createCake(compactCake, cake?.candles);
+      cake = createCake(compactCake, cake?.candles, cake?.orbits);
     }
     buildScene();
     resizeCanvas();
@@ -735,7 +750,7 @@ import {
   }
   function scheduleMeteor(now) {
     const limit = reduced || lowDetail ? 1 : 3;
-    if (intro || now < nextMeteorAt || meteors.length >= limit) return;
+    if ((scene === "cake" && intro) || now < nextMeteorAt || meteors.length >= limit) return;
     const margin = Math.max(90, Math.min(w, h) * .18);
     const startFromTop = Math.random() < .58;
     const startX = startFromTop ? rand(-w * .12, w * .28) : -margin;
@@ -999,11 +1014,11 @@ import {
       startCake((opening.time + opening.duration) * 1000);
     }
     if (scene !== "cake") {
-      drawInvitation(t);
+      drawInvitation(t, dt, now);
       requestAnimationFrame(draw);
       return;
     }
-    const elapsed = (now - introStart) / 1000;
+    const elapsed = cakeTimeline((now - introStart) / 1000);
     if (intro && elapsed >= 12.2) { intro = false; stage.classList.remove("playing"); }
     if (!lowDetail && elapsed > 1 && interval > 0 && interval < 250 && !document.hidden) {
       samples++;
@@ -1031,6 +1046,7 @@ import {
     replay.hidden = false;
     cakeHint.hidden = false;
     recolorCandles(cake);
+    randomizeCakeOrbits(cake);
     const digitColor = randomRainbowColor();
     digitColors = [digitColor, digitColor];
     intro = true;
